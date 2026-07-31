@@ -37,6 +37,7 @@
     <button class="btn b3" id="bPass">NAHRÁT<span class="key">N</span></button>
     <button class="btn b4" id="bStop">STOP<span class="key">B</span></button>
     <button class="btn" id="bSwitch" style="background:#e08a1e">PŘEPNOUT HRÁČE<span class="key">Z</span></button>
+    <button class="btn" id="bMute" style="background:#5a6472">🔊 ZVUK<span class="key">M</span></button>
   </div>
   <div id="menu">
     <h1>🏑 FLORBAL ŇUŇÍSKŮ 🏑</h1>
@@ -80,7 +81,15 @@ let parts=[],trail=[];
 
 // ---------- zvuky (bez souborů, generované) ----------
 let AC=null;
+let ticho=(localStorage.getItem('florbalTicho')==='1');
+function prepniZvuk(){
+  ticho=!ticho;
+  try{localStorage.setItem('florbalTicho',ticho?'1':'0');}catch(e){}
+  const b=document.getElementById('bMute');
+  if(b)b.innerHTML=(ticho?'🔇 ZVUK':'🔊 ZVUK')+'<span class="key">M</span>';
+}
 function beep(f,dur,type='square',vol=0.05,slide=0){
+  if(ticho)return;
   try{
     AC=AC||new (window.AudioContext||window.webkitAudioContext)();
     const o=AC.createOscillator(),g=AC.createGain();
@@ -210,6 +219,7 @@ addEventListener('keydown',e=>{
   if(k===' '&&!keys[' ']&&running&&ball.owner===me){charging=true;charge=0;}   // nabíjení střely
   keys[k]=true;
   if(k==='v')poke();if(k==='n')pass();if(k==='b')stopIt();if(k==='z')switchPlayer();
+  if(k==='m')prepniZvuk();
   if(k==='p'||k==='escape'){paused=!paused;say(paused?'PAUZA ⏸ (P = zpět)':'Hraje se! ▶');}
 });
 addEventListener('keyup',e=>{
@@ -223,6 +233,7 @@ cv.addEventListener('mousedown',e=>mouse=toWorld(e));
 cv.addEventListener('mousemove',e=>{if(mouse)mouse=toWorld(e);});
 addEventListener('mouseup',()=>mouse=null);
 bShoot.onclick=()=>shoot(0.55);bPoke.onclick=poke;bPass.onclick=pass;bStop.onclick=stopIt;
+bMute.onclick=prepniZvuk;
 bSwitch.onclick=()=>switchPlayer();
 
 function shoot(power){
@@ -233,7 +244,12 @@ function shoot(power){
   const side=gk?(gk.y>CY?-1:1):(Math.random()<.5?-1:1);
   const gy=CY+side*GOALH*(0.55+0.3*p)+(Math.random()-.5)*GOALH*(1.1-p*0.8);
   let dx=GL_R-me.x,dy=gy-me.y,d=Math.hypot(dx,dy)||1;
-  if(d>820){dx=me.dx;dy=me.dy;d=Math.hypot(dx,dy)||1;}
+  if(d>820){
+    /* Z takové dálky se na bránu netrefíš – míček letěl směrem, kterým se
+       díváš, a vypadalo to jako rozbitá střela. Radši to řekneme nahlas. */
+    dx=me.dx;dy=me.dy;d=Math.hypot(dx,dy)||1;
+    say('Moc daleko na bránu – jen odpal! 🏑');
+  }
   const v=13+p*15;
   ball.owner=null;ball.free=11;ball.vx=dx/d*v;ball.vy=dy/d*v;me.cool=18;
   lastShooter=me.name;stats.shots++;SFX.shot(p);
@@ -803,6 +819,7 @@ function buildSel(id){
     box.appendChild(b);});
 }
 buildSel('selA');buildSel('selB');
+if(ticho){const b=document.getElementById('bMute');if(b)b.innerHTML='🔇 ZVUK<span class="key">M</span>';}
 function startCommon(){
   document.getElementById('menu').style.display='none';
   document.getElementById('stats').textContent='';
