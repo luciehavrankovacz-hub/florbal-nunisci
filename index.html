@@ -232,7 +232,7 @@ function shoot(power){
   let dx=GL_R-me.x,dy=gy-me.y,d=Math.hypot(dx,dy)||1;
   if(d>820){dx=me.dx;dy=me.dy;d=Math.hypot(dx,dy)||1;}
   const v=12+p*13;
-  ball.owner=null;ball.free=16;ball.vx=dx/d*v;ball.vy=dy/d*v;me.cool=18;
+  ball.owner=null;ball.free=11;ball.vx=dx/d*v;ball.vy=dy/d*v;me.cool=18;
   lastShooter=me.name;stats.shots++;SFX.shot(p);
   say(me.name+(p>0.8?' pálí ze všech sil! 💥':' střílí! 🏑'));
 }
@@ -251,7 +251,7 @@ function pass(){
   });
   if(!best)return;
   const dx=best.x-me.x,dy=best.y-me.y,d=Math.hypot(dx,dy)||1;
-  ball.owner=null;ball.free=14;ball.vx=dx/d*13;ball.vy=dy/d*13;me.cool=12;
+  ball.owner=null;ball.free=10;ball.vx=dx/d*13;ball.vy=dy/d*13;me.cool=12;
   SFX.pass();say('Nahrávka pro '+best.name+'! 🎯');
 }
 function poke(){
@@ -274,6 +274,18 @@ function clampRink(p){
   const m=p.r;
   p.x=Math.max(rink.x+m,Math.min(rink.x+rink.w-m,p.x));
   p.y=Math.max(rink.y+m,Math.min(rink.y+rink.h-m,p.y));
+}
+/* Kdo z tymu je k micku k-ty nejblizsi (0 = nejblizsi). Diky tomu se o
+   volny micek perou dva, ne jeden - jinak micek dlouho lezel v poli a
+   zapas se vlekl (nameren: micek volny 52 % casu). */
+function poradiKMicku(p){
+  let poradi=0;
+  const d0=Math.hypot(p.x-ball.x,p.y-ball.y);
+  for(const o of players){
+    if(o===p||o.team!==p.team||o.goalie||o.team==='R')continue;
+    if(Math.hypot(o.x-ball.x,o.y-ball.y)<d0)poradi++;
+  }
+  return poradi;
 }
 function nearestOf(team){
   let b=null,bd=1e9;
@@ -306,7 +318,9 @@ function aiTarget(p){
   const D=[0.74,0.94,1.14][diff];
   const sp=p.team==='A'?3.7:3.8*D;
   if(ball.owner===p)return {x:goalX,y:CY+(ball.y-CY)*0.35,sp};
-  if(nearestOf(p.team)===p)return {x:ball.x,y:ball.y,sp};
+  /* za volnym mickem bezi dva nejblizsi, za drzenym jen jeden */
+  const kolikBezi = ball.owner ? 1 : 2;
+  if(poradiKMicku(p) < kolikBezi)return {x:ball.x,y:ball.y,sp};
   const mine=ball.owner&&ball.owner.team===p.team;
   const push=mine?(attackR?420:-420):(attackR?-160:160);
   return {x:Math.max(rink.x+120,Math.min(rink.x+rink.w-120,(p.hx+ball.x)/2+push)),
@@ -337,13 +351,13 @@ function botAction(p){
   if(ball.owner!==p)return;
   if(dist<470&&Math.random()<0.035*D+0.01){
     const gy=CY+(Math.random()-.5)*(190-50*D),dx=goalX-p.x,dy=gy-p.y,d=Math.hypot(dx,dy)||1;
-    ball.owner=null;ball.free=16;ball.vx=dx/d*16;ball.vy=dy/d*16;p.cool=16;
+    ball.owner=null;ball.free=11;ball.vx=dx/d*16;ball.vy=dy/d*16;p.cool=16;
     lastShooter=p.name;SFX.shot(0.6);
   }else if(Math.random()<0.012&&mode==='match'){
     let m=null,bd=1e9;
     players.forEach(t=>{if(t.team===p.team&&t!==p&&!t.goalie){const d=Math.hypot(t.x-p.x,t.y-p.y);if(d<bd){bd=d;m=t;}}});
     if(m){const dx=m.x-p.x,dy=m.y-p.y,d=Math.hypot(dx,dy)||1;
-      ball.owner=null;ball.free=14;ball.vx=dx/d*13;ball.vy=dy/d*13;p.cool=12;}
+      ball.owner=null;ball.free=10;ball.vx=dx/d*13;ball.vy=dy/d*13;p.cool=12;}
   }
 }
 function step(){
@@ -371,6 +385,7 @@ function step(){
 
   players.forEach(p=>{
     p.cool=Math.max(0,p.cool-1);
+    p.saveCd=Math.max(0,(p.saveCd||0)-1);
     if(p!==me){
       const t=aiTarget(p),dx=t.x-p.x,dy=t.y-p.y,d=Math.hypot(dx,dy)||1;
       const acc=p.goalie?2.2:0.55;   // brankář reaguje bleskově
@@ -430,16 +445,28 @@ function step(){
       let hit=false;
       for(const p of players){
         const d=Math.hypot(p.x-ball.x,p.y-ball.y);
-        if(p.goalie&&d<p.r+20){                        // ZÁKROK BRANKÁŘE
-          const a=Math.atan2(ball.y-p.y,ball.x-p.x);
+        if(p.goalie&&d<p.r+20&&p.saveCd===0){          // ZÁKROK BRANKÁŘE
+          /* POZOR: tenhle blok se dřív spouštěl KAŽDÝ SNÍMEK, co byl míček
+             u brankáře – naměřeno 50 579 „zákroků" na 13 střel. Pokaždé
+             přitom nastavil míčku ochrannou lhůtu (`ball.free`), takže ho
+             žádný hráč v poli nemohl sebrat: míček u branky uvízl, odrážel
+             se pořád dokola a zápasy končily 0:0. Proto tu je `saveCd`. */
+          p.saveCd=14;
           if(p.team==='A')stats.saves++;
           SFX.save();
-          if(ball.free===0&&Math.random()<0.6){        // chytil
+          if(ball.free===0&&Math.random()<0.55){        // chytil
             ball.owner=p;say('Brankář chytá! 🧤');
           }else{                                       // vyrazil
-            const v=Math.max(5,Math.hypot(ball.vx,ball.vy)*0.5);
-            ball.x=p.x+Math.cos(a)*(p.r+16);ball.y=p.y+Math.sin(a)*(p.r+16);
-            ball.vx=Math.cos(a)*v;ball.vy=Math.sin(a)*v;ball.free=10;
+            /* Vyrazit se musí OD SVÉ BRANKY do pole, ne „kamkoli od brankáře" –
+               jinak si to sám srazil za sebe do vlastní sítě. */
+            const ven=p.team==='A'?1:-1;
+            const uhel=Math.atan2(ball.y-p.y,ball.x-p.x);
+            let sx=Math.cos(uhel), sy=Math.sin(uhel);
+            if(sx*ven<0.25){ sx=ven*0.9; sy=(ball.y<CY?-1:1)*0.45; }
+            const dl=Math.hypot(sx,sy)||1; sx/=dl; sy/=dl;
+            const v=Math.max(9,Math.hypot(ball.vx,ball.vy)*0.6);
+            ball.x=p.x+sx*(p.r+22);ball.y=p.y+sy*(p.r+22);
+            ball.vx=sx*v;ball.vy=sy*v;ball.free=8;
             say('Zákrok brankáře! 🧤');
             if(mode==='shootout'){penEnd(pen.turn==='A'?'Brankář to vyrazil! 😿':'Vyrazil jsi to! 🎉');ended=true;}
           }
@@ -450,7 +477,7 @@ function step(){
       if(hit)break;
     }
     if(ended)return;
-    ball.vx*=0.982;ball.vy*=0.982;
+    ball.vx*=0.974;ball.vy*=0.974;   // driv se usadi, at si ho nekdo vezme
   }
   if(msgT>0)msgT--;
 }
