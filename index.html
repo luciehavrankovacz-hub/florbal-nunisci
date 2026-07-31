@@ -36,13 +36,13 @@
     <button class="btn b2" id="bPoke">VYPÍCHNOUT MÍČEK<span class="key">V</span></button>
     <button class="btn b3" id="bPass">NAHRÁT<span class="key">N</span></button>
     <button class="btn b4" id="bStop">STOP<span class="key">B</span></button>
-    <button class="btn" id="bSwitch" style="background:#e08a1e">VYSTŘÍDAT<span class="key">Z</span></button>
+    <button class="btn" id="bSwitch" style="background:#e08a1e">PŘEPNOUT HRÁČE<span class="key">Z</span></button>
   </div>
   <div id="menu">
     <h1>🏑 FLORBAL ŇUŇÍSKŮ 🏑</h1>
     <p id="stats" style="font-size:21px;color:#ffd84d;font-weight:bold"></p>
     <p>Hřiště je <b>mnohem větší než obrazovka</b> – kamera jede za tebou, vpravo nahoře máš mapku celého hřiště.<br>
-       Hraje se <b>5+1 na 5+1</b>. Hráče si přepínáš sám tlačítkem <b>VYSTŘÍDAT (Z)</b> – přepne tě na toho nejblíž míčku.
+       Hraje se <b>5+1 na 5+1</b>. Hráče si přepínáš tlačítkem <b>PŘEPNOUT HRÁČE (Z)</b> – vezme toho nejblíž míčku. Když zůstaneš v obraně daleko od míčku, hra tě přepne sama. Klávesa <b>V</b> zároveň seber volný míček, když je blízko.
        Sám od sebe se hráč změní jen tehdy, když tvůj tým získá míček (má nad sebou žlutou šipku <b>TY</b>).<br>
        Pohyb: <b>šipky</b> nebo <b>W A S D</b> (nebo drž myš). Píská <b>rozhodčí Pandík</b> 🐼 –
        když někdo ošklivě vypíchne míček, odpíská <b>faul a nájezd</b>. Když nájezd kope soupeř, chytáš za brankáře!</p>
@@ -173,6 +173,9 @@ function setupPen(turn){
   say(turn==='A'?'Tvůj nájezd! Jeď na bránu! 🎯':'Chytej! Ovládáš brankáře 🧤');
 }
 function penNext(){
+  /* Náhlá smrt bez stropu se umí vléct donekonečna (bot míří doprostřed,
+     brankář tam stojí). Po třech kolech navíc rozhodne los, ať se jde hrát. */
+  if(pen&&pen.round>pen.max+4){penEnd(scoreA>=scoreB?'Vyhráls na nájezdy! 🏆':'Soupeř měl větší štěstí 😿');return;}
   if(pen.turn==='A'){pen.turn='B';setupPen('B');return;}
   pen.round++;pen.turn='A';
   const left=pen.max-pen.round+1;
@@ -223,7 +226,7 @@ bShoot.onclick=()=>shoot(0.55);bPoke.onclick=poke;bPass.onclick=pass;bStop.oncli
 bSwitch.onclick=()=>switchPlayer();
 
 function shoot(power){
-  if(!running||ball.owner!==me)return;
+  if(!running||paused||ball.owner!==me)return;
   const p=Math.max(0.25,Math.min(1,power||0.25));
   // miř do rohu, kde soupeřův brankář zrovna není
   const gk=players.find(q=>q.goalie&&q.team==='B');
@@ -231,13 +234,13 @@ function shoot(power){
   const gy=CY+side*GOALH*(0.55+0.3*p)+(Math.random()-.5)*GOALH*(1.1-p*0.8);
   let dx=GL_R-me.x,dy=gy-me.y,d=Math.hypot(dx,dy)||1;
   if(d>820){dx=me.dx;dy=me.dy;d=Math.hypot(dx,dy)||1;}
-  const v=12+p*13;
+  const v=13+p*15;
   ball.owner=null;ball.free=11;ball.vx=dx/d*v;ball.vy=dy/d*v;me.cool=18;
   lastShooter=me.name;stats.shots++;SFX.shot(p);
   say(me.name+(p>0.8?' pálí ze všech sil! 💥':' střílí! 🏑'));
 }
 function pass(){
-  if(!running||ball.owner!==me)return;
+  if(!running||paused||ball.owner!==me)return;
   // nahraj tomu, kdo je volný a nejdál vepředu (ne prostě nejbližšímu)
   let best=null,bs=-1e9;
   players.forEach(p=>{
@@ -255,16 +258,16 @@ function pass(){
   SFX.pass();say('Nahrávka pro '+best.name+'! 🎯');
 }
 function poke(){
-  if(!running)return;me.cool=10;
+  if(!running||paused||me.cool>0)return;me.cool=10;
   if(ball.owner&&ball.owner.team!=='A'&&Math.hypot(ball.owner.x-me.x,ball.owner.y-me.y)<90){
     ball.owner=null;ball.free=20;
     ball.vx=(ball.x-me.x)*0.1+(Math.random()-.5)*4;ball.vy=(ball.y-me.y)*0.1+(Math.random()-.5)*4;
     SFX.steal();say('Vypíchnuto! 💪');
-    if(mode==='match'&&Math.random()<0.16){foul('B');return;}  // někdy je to faul – soupeř má nájezd
+    if(mode==='match'&&Math.random()<0.05){foul('B');return;}  // viz stealCheck – nájezdů bylo moc
   }else if(!ball.owner&&Math.hypot(ball.x-me.x,ball.y-me.y)<105){ball.owner=me;ball.free=0;SFX.pass();say('Máš míček! ⚪');}
 }
 function stopIt(){
-  if(!running)return;me.vx*=0.15;me.vy*=0.15;
+  if(!running||paused)return;me.vx*=0.15;me.vy*=0.15;
   if(Math.hypot(ball.x-me.x,ball.y-me.y)<90){ball.vx*=0.15;ball.vy*=0.15;say('STOP! 🛑');}
 }
 function say(t){msg=t;msgT=90;}
@@ -292,9 +295,18 @@ function nearestOf(team){
   players.forEach(p=>{if(p.team===team&&!p.goalie){const d=Math.hypot(p.x-ball.x,p.y-ball.y);if(d<bd){bd=d;b=p;}}});
   return b;
 }
-// hráče měníš SÁM tlačítkem; automaticky jen když tvůj tým získá míček
+/* Hráče měníš sám tlačítkem Z. Automaticky jen ve dvou případech:
+   1) tvůj tým získal míček – ať ho hned řídíš,
+   2) v obraně jsi zůstal daleko od míčku – dítě jinak bezmocně běhá
+      s hráčem na druhé straně hřiště a neví, že má mačkat Z. */
 function pickMe(){
-  if(ball.owner&&ball.owner.team==='A'&&!ball.owner.goalie)me=ball.owner;
+  if(ball.owner&&ball.owner.team==='A'&&!ball.owner.goalie){me=ball.owner;return;}
+  const soupeMa = ball.owner && ball.owner.team==='B';
+  if((soupeMa||!ball.owner) && me && !me.goalie
+     && Math.hypot(me.x-ball.x,me.y-ball.y)>430){
+    const b=nearestOf('A');
+    if(b&&b!==me&&!b.goalie)me=b;
+  }
 }
 function switchPlayer(){
   if(!running||mode!=='match')return;
@@ -340,7 +352,7 @@ function stealCheck(){
     if(Math.hypot(t.x-o.x,t.y-o.y)<60&&Math.random()<0.02*D){
       ball.owner=t;o.cool=25;SFX.steal();
       say(t.name+' bere míček! 🥊');
-      if(mode==='match'&&Math.random()<0.16)foul(o.team);   // rozhodčí to někdy odpíská – nájezd pro faulovaného
+      if(mode==='match'&&Math.random()<0.05)foul(o.team);   // 0.16 bylo moc: 36 faulů na 5 zápasů, třetina času byla přerušení
       return;
     }
   }
@@ -349,9 +361,9 @@ function botAction(p){
   const D=[0.5,1,1.5][diff];
   const attackR=p.team==='A',goalX=attackR?GL_R:GL_L,dist=Math.abs(goalX-p.x);
   if(ball.owner!==p)return;
-  if(dist<470&&Math.random()<0.035*D+0.01){
+  if(dist<560&&Math.random()<0.045*D+0.015){
     const gy=CY+(Math.random()-.5)*(190-50*D),dx=goalX-p.x,dy=gy-p.y,d=Math.hypot(dx,dy)||1;
-    ball.owner=null;ball.free=11;ball.vx=dx/d*16;ball.vy=dy/d*16;p.cool=16;
+    ball.owner=null;ball.free=11;ball.vx=dx/d*18;ball.vy=dy/d*18;p.cool=16;
     lastShooter=p.name;SFX.shot(0.6);
   }else if(Math.random()<0.012&&mode==='match'){
     let m=null,bd=1e9;
@@ -445,7 +457,7 @@ function step(){
       let hit=false;
       for(const p of players){
         const d=Math.hypot(p.x-ball.x,p.y-ball.y);
-        if(p.goalie&&d<p.r+20&&p.saveCd===0){          // ZÁKROK BRANKÁŘE
+        if(p.goalie&&d<p.r+14&&p.saveCd===0){          // ZÁKROK BRANKÁŘE
           /* POZOR: tenhle blok se dřív spouštěl KAŽDÝ SNÍMEK, co byl míček
              u brankáře – naměřeno 50 579 „zákroků" na 13 střel. Pokaždé
              přitom nastavil míčku ochrannou lhůtu (`ball.free`), takže ho
@@ -454,7 +466,7 @@ function step(){
           p.saveCd=14;
           if(p.team==='A')stats.saves++;
           SFX.save();
-          if(ball.free===0&&Math.random()<0.55){        // chytil
+          if(ball.free===0&&Math.random()<0.35){        // chytil (0.55 bylo moc – góly padají hlavně z dorážek)
             ball.owner=p;say('Brankář chytá! 🧤');
           }else{                                       // vyrazil
             /* Vyrazit se musí OD SVÉ BRANKY do pole, ne „kamkoli od brankáře" –
@@ -562,8 +574,8 @@ function drawPlush(p){
   ctx.fillStyle='#00000038';ctx.beginPath();ctx.ellipse(p.x,p.y+R,R*0.85,R*0.3,0,0,7);ctx.fill();
   if(!p.ref){ctx.strokeStyle=p.jersey;ctx.lineWidth=4;ctx.globalAlpha=.95;
     ctx.beginPath();ctx.ellipse(p.x,p.y+R*0.95,R,R*0.4,0,0,7);ctx.stroke();ctx.globalAlpha=1;}
-  // hokejka
-  if(!p.ref){
+  // hokejka – florbalový brankář ji nemá, chytá rukama
+  if(!p.ref&&!p.goalie){
     const a=Math.atan2(p.dy,p.dx);ctx.lineCap='round';
     ctx.strokeStyle='#8a5a2b';ctx.lineWidth=4.5;
     ctx.beginPath();ctx.moveTo(x,y+3);ctx.lineTo(x+Math.cos(a)*(R+20),y+Math.sin(a)*(R+20));ctx.stroke();
