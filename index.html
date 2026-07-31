@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Florbal Ňuňísků</title>
+<style>
+  html,body{margin:0;padding:0;background:#0b1024;font-family:"Segoe UI",Verdana,sans-serif;color:#fff;overflow-x:hidden;}
+  #wrap{position:relative;width:1360px;max-width:100vw;margin:0 auto;}
+  canvas{display:block;width:100%;border-radius:16px;box-shadow:0 0 40px #000a;background:#0d1330;}
+  #hud{display:flex;gap:12px;align-items:center;justify-content:center;padding:10px;flex-wrap:wrap;}
+  .btn{font-size:24px;font-weight:bold;padding:12px 22px;border:none;border-radius:14px;cursor:pointer;
+       box-shadow:0 5px 0 #0006;color:#fff;letter-spacing:1px;}
+  .btn:active{transform:translateY(4px);box-shadow:0 1px 0 #0006;}
+  .b1{background:#e8433f} .b2{background:#2fa8e0} .b3{background:#3fbf6a} .b4{background:#8a63d2}
+  .key{display:block;font-size:12px;font-weight:normal;opacity:.85}
+  #menu{position:absolute;inset:0;background:rgba(8,12,28,.94);display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:18px;border-radius:16px;text-align:center;overflow:auto;}
+  #menu h1{font-size:54px;margin:0;color:#ffd84d;text-shadow:0 5px 0 #b4700d,0 0 40px #ffd84d66;}
+  #menu p{font-size:17px;margin:0;max-width:1000px;line-height:1.5;color:#cfe0ff;}
+  .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center}
+  .lab{font-size:20px;font-weight:bold;width:150px;text-align:right;color:#ffd84d}
+  .dbtn{font-size:19px;padding:10px 20px;border-radius:14px;border:4px solid #ffffff33;background:#26314f;
+        color:#fff;cursor:pointer;font-weight:bold;}
+  .dbtn.on{background:#ffd84d;color:#3a2600;border-color:#fff;}
+  .big{font-size:44px;padding:20px 62px;background:linear-gradient(#3fdc6a,#1e9d45);border:none;
+        border-radius:24px;color:#06280f;font-weight:900;cursor:pointer;box-shadow:0 9px 0 #0f6b2c;letter-spacing:2px;}
+  .big:active{transform:translateY(6px);box-shadow:0 3px 0 #0f6b2c;}
+  .big2{background:linear-gradient(#ffd84d,#e0a615);box-shadow:0 9px 0 #96690a;color:#3a2600;font-size:32px;padding:16px 44px;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="1360" height="760"></canvas>
+  <div id="hud">
+    <button class="btn b1" id="bShoot">STŘÍLET<span class="key">mezerník</span></button>
+    <button class="btn b2" id="bPoke">VYPÍCHNOUT MÍČEK<span class="key">V</span></button>
+    <button class="btn b3" id="bPass">NAHRÁT<span class="key">N</span></button>
+    <button class="btn b4" id="bStop">STOP<span class="key">B</span></button>
+    <button class="btn" id="bSwitch" style="background:#e08a1e">VYSTŘÍDAT<span class="key">Z</span></button>
+  </div>
+  <div id="menu">
+    <h1>🏑 FLORBAL ŇUŇÍSKŮ 🏑</h1>
+    <p id="stats" style="font-size:21px;color:#ffd84d;font-weight:bold"></p>
+    <p>Hřiště je <b>mnohem větší než obrazovka</b> – kamera jede za tebou, vpravo nahoře máš mapku celého hřiště.<br>
+       Hraje se <b>5+1 na 5+1</b>. Hráče si přepínáš sám tlačítkem <b>VYSTŘÍDAT (Z)</b> – přepne tě na toho nejblíž míčku.
+       Sám od sebe se hráč změní jen tehdy, když tvůj tým získá míček (má nad sebou žlutou šipku <b>TY</b>).<br>
+       Pohyb: <b>šipky</b> nebo <b>W A S D</b> (nebo drž myš). Píská <b>rozhodčí Pandík</b> 🐼 –
+       když někdo ošklivě vypíchne míček, odpíská <b>faul a nájezd</b>. Když nájezd kope soupeř, chytáš za brankáře!</p>
+    <div class="row"><span class="lab">Hraješ za:</span><div class="row" id="selA"></div></div>
+    <div class="row"><span class="lab">Soupeř:</span><div class="row" id="selB"></div></div>
+    <div class="row"><span class="lab">Síla bota:</span>
+      <div class="row" id="diff">
+        <button class="dbtn" data-d="0">🐣 Lehký</button>
+        <button class="dbtn on" data-d="1">😺 Střední</button>
+        <button class="dbtn" data-d="2">🐺 Těžký</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="big" id="play">HRÁT ZÁPAS</button>
+      <button class="big big2" id="playPen">🎯 NÁJEZDY</button>
+    </div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const VW=1360,VH=760;              // okno (co je vidět)
+const FW=2500,FH=1350;             // celé hřiště (svět) – mnohem větší než obrazovka
+const rink={x:70,y:70,w:FW-140,h:FH-140};
+const CY=rink.y+rink.h/2, GOALH=135;
+const GL_L=rink.x+14, GL_R=rink.x+rink.w-14;
+const cam={x:0,y:0};
+
+let diff=1,running=false,over=false,mode='match';
+let msg="",msgT=0,timeLeft=180,scoreA=0,scoreB=0,T=0,pauseT=0,pauseFn=null;
+let pen=null; // stav nájezdů
+let paused=false,charging=false,charge=0,stamina=100,cheer=0,lastShooter=null,shake=0;
+let record=+(localStorage.getItem('florbalRekord')||0);
+let stats={shots:0,saves:0,goals:{}};
+let parts=[],trail=[];
+
+// ---------- zvuky (bez souborů, generované) ----------
+let AC=null;
+function beep(f,dur,type='square',vol=0.05,slide=0){
+  try{
+    AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),g=AC.createGain();
+    o.type=type;o.frequency.setValueAtTime(f,AC.currentTime);
+    if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(60,f+slide),AC.currentTime+dur);
+    g.gain.setValueAtTime(vol,AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+dur);
+    o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+const SFX={
+  whistle(){beep(2100,0.15,'square',0.05,-300);setTimeout(()=>beep(2400,0.2,'square',0.05,-600),130);},
+  goal(){[523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,0.24,'triangle',0.07),i*110));},
+  shot(p){beep(280+240*(p||0.5),0.1,'sawtooth',0.05,-140);},
+  save(){beep(170,0.14,'square',0.06,-70);},
+  pass(){beep(620,0.07,'triangle',0.04);},
+  steal(){beep(420,0.09,'square',0.05,160);}
+};
+function confetti(x,y,n){
+  for(let i=0;i<n;i++)parts.push({x,y,vx:(Math.random()-.5)*13,vy:-Math.random()*11-2,
+    life:80+Math.random()*50,c:`hsl(${Math.random()*360},90%,62%)`,s:3+Math.random()*5,rot:Math.random()*6});
+}
+
+// ---------- týmy ----------
+const TEAMS={
+  cica:{label:'KOČIČKY',emoji:'🐱',type:'cica',jersey:'#ff5c9e',
+    furs:['#ffd9a0','#ffb45e','#c9a8f0','#ffe6c9','#f0b8d0','#e8c49a'],
+    names:['Micka','Mandarin','Mystic','Kiki','Líza','Tygřík']},
+  pejsek:{label:'PEJSCI',emoji:'🐶',type:'pejsek',jersey:'#2f7ddb',
+    furs:['#d9b48a','#b98356','#fff0d4','#8d6743','#c9a276','#f0dcc0'],
+    names:['Dunčo','Rex','Clawsby','Bafík','Punťa','Alík']},
+  medvidek:{label:'MEDVÍDCI',emoji:'🧸',type:'medvidek',jersey:'#3fbf6a',
+    furs:['#e0b98a','#c99a6a','#f6d9a8','#a97b4f','#d8ac7e','#eecfa6'],
+    names:['Pufík','Bruno','Méďa','Chlupáč','Bobík','Huňáč']},
+  zajic:{label:'ZAJÍČCI',emoji:'🐰',type:'zajic',jersey:'#ffb02e',
+    furs:['#fff8e0','#ffffff','#f0e6ff','#ded6f5','#fdf0d0','#efe8ff'],
+    names:['Ušík','Zajda','Skokan','Chichi','Bělka','Hopík']}
+};
+let keyA='cica',keyB='pejsek';
+
+function P(name,type,fur,jersey,team,x,y,goalie,ref){
+  return {name,type,fur,jersey,team,x,y,hx:x,hy:y,vx:0,vy:0,r:goalie?28:21,num:1,
+          dx:team==='A'?1:-1,dy:0,goalie:!!goalie,ref:!!ref,cool:0,anim:Math.random()*6};
+}
+let players=[],me=null,referee=null;
+const ball={x:FW/2,y:CY,vx:0,vy:0,r:10,owner:null,free:0};
+
+// rozestavení 5 hráčů + brankář
+const FORM=[[300,0],[620,-360],[620,360],[900,-190],[900,190]];
+function makeTeams(){
+  const A=TEAMS[keyA],B=TEAMS[keyB];
+  players=[];
+  players.push(P(A.names[0],A.type,A.furs[0],A.jersey,'A',rink.x+70,CY,true));
+  FORM.forEach((f,i)=>players.push(P(A.names[i+1],A.type,A.furs[i+1],A.jersey,'A',rink.x+f[0],CY+f[1])));
+  players.push(P(B.names[0],B.type,B.furs[0],B.jersey,'B',rink.x+rink.w-70,CY,true));
+  FORM.forEach((f,i)=>players.push(P(B.names[i+1],B.type,B.furs[i+1],B.jersey,'B',rink.x+rink.w-f[0],CY-f[1])));
+  const nums=[1,4,5,7,9,10];
+  players.forEach((p,i)=>{p.num=nums[i%6];p.hx=p.x;p.hy=p.y;});
+  referee=P('Pandík','panda','#ffffff','#222222','R',FW/2,CY-260,false,true);
+  me=players[3];
+}
+function shade(hex,amt){
+  const n=parseInt(hex.slice(1),16);
+  const c=[n>>16,(n>>8)&255,n&255].map(v=>Math.max(0,Math.min(255,v+amt)));
+  return 'rgb('+c.join(',')+')';
+}
+function resetPositions(dir){
+  makeTeams();
+  ball.x=FW/2;ball.y=CY;ball.vx=(Math.random()-.5)*2*dir;ball.vy=(Math.random()-.5)*2;
+  ball.owner=null;ball.free=30;
+  cam.x=Math.max(0,Math.min(FW-VW,me.x-VW/2));
+  cam.y=Math.max(0,Math.min(FH-VH,me.y-VH/2));
+}
+
+// ---------- nájezdy ----------
+function setupPen(turn){
+  const A=TEAMS[keyA],B=TEAMS[keyB];
+  players=[];
+  const goalieTeam=turn==='A'?'B':'A';
+  const G=goalieTeam==='A'?A:B;
+  const gx=goalieTeam==='A'?rink.x+70:rink.x+rink.w-70;
+  players.push(P(G.names[0],G.type,G.furs[0],G.jersey,goalieTeam,gx,CY,true));
+  const S=turn==='A'?A:B, sx=turn==='A'?FW/2-260:FW/2+260;
+  players.push(P(S.names[1+pen.round%5],S.type,S.furs[1+pen.round%5],S.jersey,turn,sx,CY));
+  players[0].num=1;players[1].num=9;
+  referee=P('Pandík','panda','#ffffff','#222222','R',FW/2,CY-240,false,true);
+  me=turn==='A'?players[1]:players[0];   // útočíš, nebo chytáš za brankáře
+  ball.owner=players[1];ball.free=0;ball.vx=0;ball.vy=0;
+  pen.timer=13;pen.done=false;
+  say(turn==='A'?'Tvůj nájezd! Jeď na bránu! 🎯':'Chytej! Ovládáš brankáře 🧤');
+}
+function penNext(){
+  if(pen.turn==='A'){pen.turn='B';setupPen('B');return;}
+  pen.round++;pen.turn='A';
+  const left=pen.max-pen.round+1;
+  if(pen.round>pen.max){
+    if(scoreA!==scoreB){endGame();return;}
+    say('Rozstřel! Kdo dá a soupeř ne, vyhrává! 🔥');
+  }
+  setupPen('A');
+}
+function penEnd(txt){
+  if(pen.done)return;
+  pen.done=true;running=false;say(txt);
+  pauseT=90;pauseFn=()=>{
+    if(pen.foul){mode='match';resetPositions(1);running=true;say('Hraje se dál! 🏑');return;}
+    if(pen.round>pen.max&&pen.turn==='B'&&scoreA!==scoreB){endGame();return;}
+    penNext();running=true;
+  };
+}
+// faul – rozhodčí Pandík píská nájezd pro tým 'team'
+function foul(team){
+  if(mode!=='match')return;
+  mode='shootout';pen={round:1,max:1,turn:team,timer:13,done:false,foul:true};
+  running=false;SFX.whistle();say('PÍÍÍP! 🐼 Faul! Nájezd pro '+(team==='A'?TEAMS[keyA].label:TEAMS[keyB].label)+'!');
+  pauseT=100;pauseFn=()=>{setupPen(team);running=true;};
+}
+
+// ---------- ovládání ----------
+const keys={};
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault();
+  if(k===' '&&!keys[' ']&&running&&ball.owner===me){charging=true;charge=0;}   // nabíjení střely
+  keys[k]=true;
+  if(k==='v')poke();if(k==='n')pass();if(k==='b')stopIt();if(k==='z')switchPlayer();
+  if(k==='p'||k==='escape'){paused=!paused;say(paused?'PAUZA ⏸ (P = zpět)':'Hraje se! ▶');}
+});
+addEventListener('keyup',e=>{
+  const k=e.key.toLowerCase();keys[k]=false;
+  if(k===' '&&charging){charging=false;shoot(charge);charge=0;}
+});
+let mouse=null;
+function toWorld(e){const b=cv.getBoundingClientRect();
+  return {x:(e.clientX-b.left)*VW/b.width+cam.x,y:(e.clientY-b.top)*VH/b.height+cam.y};}
+cv.addEventListener('mousedown',e=>mouse=toWorld(e));
+cv.addEventListener('mousemove',e=>{if(mouse)mouse=toWorld(e);});
+addEventListener('mouseup',()=>mouse=null);
+bShoot.onclick=()=>shoot(0.55);bPoke.onclick=poke;bPass.onclick=pass;bStop.onclick=stopIt;
+bSwitch.onclick=()=>switchPlayer();
+
+function shoot(power){
+  if(!running||ball.owner!==me)return;
+  const p=Math.max(0.25,Math.min(1,power||0.25));
+  // miř do rohu, kde soupeřův brankář zrovna není
+  const gk=players.find(q=>q.goalie&&q.team==='B');
+  const side=gk?(gk.y>CY?-1:1):(Math.random()<.5?-1:1);
+  const gy=CY+side*GOALH*(0.55+0.3*p)+(Math.random()-.5)*GOALH*(1.1-p*0.8);
+  let dx=GL_R-me.x,dy=gy-me.y,d=Math.hypot(dx,dy)||1;
+  if(d>820){dx=me.dx;dy=me.dy;d=Math.hypot(dx,dy)||1;}
+  const v=12+p*13;
+  ball.owner=null;ball.free=16;ball.vx=dx/d*v;ball.vy=dy/d*v;me.cool=18;
+  lastShooter=me.name;stats.shots++;SFX.shot(p);
+  say(me.name+(p>0.8?' pálí ze všech sil! 💥':' střílí! 🏑'));
+}
+function pass(){
+  if(!running||ball.owner!==me)return;
+  // nahraj tomu, kdo je volný a nejdál vepředu (ne prostě nejbližšímu)
+  let best=null,bs=-1e9;
+  players.forEach(p=>{
+    if(p.team!=='A'||p===me||p.goalie)return;
+    const d=Math.hypot(p.x-me.x,p.y-me.y);
+    if(d>900)return;
+    let free=999;
+    players.forEach(o=>{if(o.team==='B')free=Math.min(free,Math.hypot(o.x-p.x,o.y-p.y));});
+    const sc=p.x*0.5+free*1.2-d*0.35;
+    if(sc>bs){bs=sc;best=p;}
+  });
+  if(!best)return;
+  const dx=best.x-me.x,dy=best.y-me.y,d=Math.hypot(dx,dy)||1;
+  ball.owner=null;ball.free=14;ball.vx=dx/d*13;ball.vy=dy/d*13;me.cool=12;
+  SFX.pass();say('Nahrávka pro '+best.name+'! 🎯');
+}
+function poke(){
+  if(!running)return;me.cool=10;
+  if(ball.owner&&ball.owner.team!=='A'&&Math.hypot(ball.owner.x-me.x,ball.owner.y-me.y)<90){
+    ball.owner=null;ball.free=20;
+    ball.vx=(ball.x-me.x)*0.1+(Math.random()-.5)*4;ball.vy=(ball.y-me.y)*0.1+(Math.random()-.5)*4;
+    SFX.steal();say('Vypíchnuto! 💪');
+    if(mode==='match'&&Math.random()<0.16){foul('B');return;}  // někdy je to faul – soupeř má nájezd
+  }else if(!ball.owner&&Math.hypot(ball.x-me.x,ball.y-me.y)<105){ball.owner=me;ball.free=0;SFX.pass();say('Máš míček! ⚪');}
+}
+function stopIt(){
+  if(!running)return;me.vx*=0.15;me.vy*=0.15;
+  if(Math.hypot(ball.x-me.x,ball.y-me.y)<90){ball.vx*=0.15;ball.vy*=0.15;say('STOP! 🛑');}
+}
+function say(t){msg=t;msgT=90;}
+
+// ---------- logika ----------
+function clampRink(p){
+  const m=p.r;
+  p.x=Math.max(rink.x+m,Math.min(rink.x+rink.w-m,p.x));
+  p.y=Math.max(rink.y+m,Math.min(rink.y+rink.h-m,p.y));
+}
+function nearestOf(team){
+  let b=null,bd=1e9;
+  players.forEach(p=>{if(p.team===team&&!p.goalie){const d=Math.hypot(p.x-ball.x,p.y-ball.y);if(d<bd){bd=d;b=p;}}});
+  return b;
+}
+// hráče měníš SÁM tlačítkem; automaticky jen když tvůj tým získá míček
+function pickMe(){
+  if(ball.owner&&ball.owner.team==='A'&&!ball.owner.goalie)me=ball.owner;
+}
+function switchPlayer(){
+  if(!running||mode!=='match')return;
+  const n=nearestOf('A');
+  if(!n||n===me)return;
+  me=n;me.vx*=0.4;me.vy*=0.4;
+  SFX.pass();say('Hraješ za '+me.name+'! 🔄');
+}
+function aiTarget(p){
+  const attackR=p.team==='A',goalX=attackR?GL_R:GL_L;
+  if(p.goalie){
+    const gx=p.team==='A'?rink.x+65:rink.x+rink.w-65;
+    let ty=ball.y;
+    const dir=p.team==='A'?-1:1;
+    if(!ball.owner&&ball.vx*dir>0.5){          // míček letí na naši branku – brankář si najede
+      const tt=(gx-ball.x)/ball.vx;
+      if(tt>0&&tt<220)ty=ball.y+ball.vy*tt;
+    }
+    return {x:gx,y:CY+Math.max(-GOALH+14,Math.min(GOALH-14,ty-CY)),sp:9.5};
+  }
+  const D=[0.74,0.94,1.14][diff];
+  const sp=p.team==='A'?3.7:3.8*D;
+  if(ball.owner===p)return {x:goalX,y:CY+(ball.y-CY)*0.35,sp};
+  if(nearestOf(p.team)===p)return {x:ball.x,y:ball.y,sp};
+  const mine=ball.owner&&ball.owner.team===p.team;
+  const push=mine?(attackR?420:-420):(attackR?-160:160);
+  return {x:Math.max(rink.x+120,Math.min(rink.x+rink.w-120,(p.hx+ball.x)/2+push)),
+          y:(p.hy*1.4+ball.y)/2.4,sp};
+}
+// boti (i brankáři) se sami pokoušejí vypíchnout míček tomu, kdo ho drží – i tobě
+function stealCheck(){
+  const o=ball.owner;
+  if(!o||o.team==='R'||o.cool>0)return;
+  const D=[0.5,1,1.5][diff];
+  for(const t of players){
+    if(t===o||t.team===o.team||t.team==='R'||t===me||t.cool>0)continue;
+    if(t.goalie){                              // brankář krade jen blízko své brány
+      const gx=t.team==='A'?rink.x+65:rink.x+rink.w-65;
+      if(Math.abs(o.x-gx)>240)continue;
+    }
+    if(Math.hypot(t.x-o.x,t.y-o.y)<60&&Math.random()<0.02*D){
+      ball.owner=t;o.cool=25;SFX.steal();
+      say(t.name+' bere míček! 🥊');
+      if(mode==='match'&&Math.random()<0.16)foul(o.team);   // rozhodčí to někdy odpíská – nájezd pro faulovaného
+      return;
+    }
+  }
+}
+function botAction(p){
+  const D=[0.5,1,1.5][diff];
+  const attackR=p.team==='A',goalX=attackR?GL_R:GL_L,dist=Math.abs(goalX-p.x);
+  if(ball.owner!==p)return;
+  if(dist<470&&Math.random()<0.035*D+0.01){
+    const gy=CY+(Math.random()-.5)*(190-50*D),dx=goalX-p.x,dy=gy-p.y,d=Math.hypot(dx,dy)||1;
+    ball.owner=null;ball.free=16;ball.vx=dx/d*16;ball.vy=dy/d*16;p.cool=16;
+    lastShooter=p.name;SFX.shot(0.6);
+  }else if(Math.random()<0.012&&mode==='match'){
+    let m=null,bd=1e9;
+    players.forEach(t=>{if(t.team===p.team&&t!==p&&!t.goalie){const d=Math.hypot(t.x-p.x,t.y-p.y);if(d<bd){bd=d;m=t;}}});
+    if(m){const dx=m.x-p.x,dy=m.y-p.y,d=Math.hypot(dx,dy)||1;
+      ball.owner=null;ball.free=14;ball.vx=dx/d*13;ball.vy=dy/d*13;p.cool=12;}
+  }
+}
+function step(){
+  if(pauseT>0){if(--pauseT===0&&pauseFn){const f=pauseFn;pauseFn=null;f();}return;}
+  if(!running)return;
+  if(mode==='match'){
+    timeLeft-=1/60;
+    if(timeLeft<=0){timeLeft=0;
+      if(scoreA===scoreB){startPens(true);return;} endGame();return;}
+  }else{
+    pen.timer-=1/60;
+    if(pen.timer<=0){penEnd(pen.turn==='A'?'Čas vypršel – nedal jsi 😿':'Soupeř nedal! 🎉');return;}
+  }
+  if(mode==='match')pickMe();
+  if(charging){if(ball.owner===me)charge=Math.min(1,charge+1/42);else{charging=false;charge=0;}}
+
+  let ax=0,ay=0;
+  if(keys['arrowleft']||keys['a'])ax-=1;
+  if(keys['arrowright']||keys['d'])ax+=1;
+  if(keys['arrowup']||keys['w'])ay-=1;
+  if(keys['arrowdown']||keys['s'])ay+=1;
+  if(mouse){const dx=mouse.x-me.x,dy=mouse.y-me.y,d=Math.hypot(dx,dy);if(d>16){ax+=dx/d;ay+=dy/d;}}
+  const n=Math.hypot(ax,ay);
+  if(n>0){me.vx+=ax/n*0.7;me.vy+=ay/n*0.7;}
+
+  players.forEach(p=>{
+    p.cool=Math.max(0,p.cool-1);
+    if(p!==me){
+      const t=aiTarget(p),dx=t.x-p.x,dy=t.y-p.y,d=Math.hypot(dx,dy)||1;
+      const acc=p.goalie?2.2:0.55;   // brankář reaguje bleskově
+      if(d>8){p.vx+=dx/d*acc;p.vy+=dy/d*acc;}
+      const s=Math.hypot(p.vx,p.vy);if(s>t.sp){p.vx*=t.sp/s;p.vy*=t.sp/s;}
+    }else{
+      const sprint=!!keys['shift']&&stamina>1&&!p.goalie;
+      const max=(p.goalie?8.5:4.0)*(sprint?1.45:1),s=Math.hypot(p.vx,p.vy);
+      if(s>max){p.vx*=max/s;p.vy*=max/s;}
+      stamina=Math.max(0,Math.min(100,stamina+(sprint&&s>1.5?-0.9:0.35)));
+    }
+    p.vx*=0.9;p.vy*=0.9;p.x+=p.vx;p.y+=p.vy;
+    const s=Math.hypot(p.vx,p.vy);
+    if(s>0.4){p.dx=p.vx/s;p.dy=p.vy/s;}
+    if(p.goalie){
+      const gx=p.team==='A'?rink.x+65:rink.x+rink.w-65;
+      p.x=Math.max(gx-45,Math.min(gx+45,p.x));
+      p.y=Math.max(CY-GOALH,Math.min(CY+GOALH,p.y));
+    }
+    clampRink(p);p.anim+=s*0.14;
+  });
+  // rozhodčí běhá kolem hry
+  {
+    const r=referee,tx=ball.x-90,ty=ball.y-200,dx=tx-r.x,dy=ty-r.y,d=Math.hypot(dx,dy)||1;
+    if(d>40){r.vx+=dx/d*0.45;r.vy+=dy/d*0.45;}
+    const s0=Math.hypot(r.vx,r.vy),mx=3.2;if(s0>mx){r.vx*=mx/s0;r.vy*=mx/s0;}
+    r.vx*=0.9;r.vy*=0.9;r.x+=r.vx;r.y+=r.vy;
+    const s=Math.hypot(r.vx,r.vy);if(s>0.4){r.dx=r.vx/s;r.dy=r.vy/s;}
+    clampRink(r);r.anim+=s*0.14;
+  }
+  for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){
+    const a=players[i],b=players[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,m=a.r+b.r;
+    if(d<m){const f=(m-d)/2/d;a.x-=dx*f;a.y-=dy*f;b.x+=dx*f;b.y+=dy*f;}
+  }
+
+  if(ball.free>0)ball.free--;
+  if(ball.owner)stealCheck();
+  if(ball.owner){
+    const o=ball.owner;
+    ball.x=o.x+o.dx*(o.r+13);ball.y=o.y+o.dy*(o.r+13);ball.vx=o.vx;ball.vy=o.vy;
+    if(o!==me&&!o.goalie)botAction(o);
+    if(o.goalie){
+      if(mode==='shootout'){penEnd(pen.turn==='A'?'Brankář to chytil! 🧤':'Tvůj brankář chytá! 🧤🎉');return;}
+      if(Math.random()<0.05){const d=o.team==='A'?1:-1;ball.owner=null;ball.free=16;ball.vx=11*d;ball.vy=(Math.random()-.5)*6;}
+    }
+  }else{
+    // míček se posouvá po malých krůčcích, aby nikomu neproletěl skrz (hlavně brankáři)
+    const sp=Math.hypot(ball.vx,ball.vy),steps=Math.max(1,Math.ceil(sp/4));
+    let ended=false;
+    for(let s=0;s<steps;s++){
+      ball.x+=ball.vx/steps;ball.y+=ball.vy/steps;
+      if(ball.y<rink.y+ball.r){ball.y=rink.y+ball.r;ball.vy*=-0.8;}
+      if(ball.y>rink.y+rink.h-ball.r){ball.y=rink.y+rink.h-ball.r;ball.vy*=-0.8;}
+      const inG=Math.abs(ball.y-CY)<GOALH;
+      if(ball.x<rink.x+ball.r){if(inG&&ball.x<GL_L){goal('B');ended=true;break;}ball.x=rink.x+ball.r;ball.vx*=-0.8;}
+      if(ball.x>rink.x+rink.w-ball.r){if(inG&&ball.x>GL_R){goal('A');ended=true;break;}ball.x=rink.x+rink.w-ball.r;ball.vx*=-0.8;}
+      let hit=false;
+      for(const p of players){
+        const d=Math.hypot(p.x-ball.x,p.y-ball.y);
+        if(p.goalie&&d<p.r+20){                        // ZÁKROK BRANKÁŘE
+          const a=Math.atan2(ball.y-p.y,ball.x-p.x);
+          if(p.team==='A')stats.saves++;
+          SFX.save();
+          if(ball.free===0&&Math.random()<0.6){        // chytil
+            ball.owner=p;say('Brankář chytá! 🧤');
+          }else{                                       // vyrazil
+            const v=Math.max(5,Math.hypot(ball.vx,ball.vy)*0.5);
+            ball.x=p.x+Math.cos(a)*(p.r+16);ball.y=p.y+Math.sin(a)*(p.r+16);
+            ball.vx=Math.cos(a)*v;ball.vy=Math.sin(a)*v;ball.free=10;
+            say('Zákrok brankáře! 🧤');
+            if(mode==='shootout'){penEnd(pen.turn==='A'?'Brankář to vyrazil! 😿':'Vyrazil jsi to! 🎉');ended=true;}
+          }
+          hit=true;break;
+        }
+        if(!p.goalie&&p.cool===0&&ball.free===0&&d<p.r+20){ball.owner=p;hit=true;break;}
+      }
+      if(hit)break;
+    }
+    if(ended)return;
+    ball.vx*=0.982;ball.vy*=0.982;
+  }
+  if(msgT>0)msgT--;
+}
+function goal(team){
+  if(team==='A')scoreA++;else scoreB++;
+  SFX.whistle();setTimeout(()=>SFX.goal(),260);
+  cheer=150;confetti(ball.x,ball.y,team==='A'?90:35);shake=team==='A'?16:8;
+  if(team==='A'&&lastShooter)stats.goals[lastShooter]=(stats.goals[lastShooter]||0)+1;
+  charging=false;charge=0;
+  if(mode==='shootout'){penEnd(team==='A'?'GÓÓÓL! Píp! 🎉🐼':'Soupeř dal gól… 😿');return;}
+  say(team==='A'?'PÍÍÍP! GÓÓÓL! 🎉🐼':'Píp! Gól soupeře… 😿');
+  running=false;pauseT=95;pauseFn=()=>{if(over)return;resetPositions(team==='A'?-1:1);running=true;};
+}
+function startPens(afterDraw){
+  mode='shootout';pen={round:1,max:5,turn:'A',timer:13,done:false};
+  if(afterDraw)say('Remíza! Rozhodnou NÁJEZDY! 🎯');
+  running=false;pauseT=70;pauseFn=()=>{setupPen('A');running=true;};
+}
+function endGame(){
+  running=false;over=true;
+  const m=document.getElementById('menu');m.style.display='flex';
+  m.querySelector('h1').textContent=scoreA>scoreB?'🏆 VYHRÁLI JSTE! '+scoreA+':'+scoreB
+    :scoreA<scoreB?'😿 Prohra '+scoreA+':'+scoreB:'🤝 Remíza '+scoreA+':'+scoreB;
+  const g=Object.entries(stats.goals).sort((a,b)=>b[1]-a[1])[0];
+  let rec='';
+  if(scoreA>record){record=scoreA;localStorage.setItem('florbalRekord',record);rec='   🥇 NOVÝ REKORD!';}
+  else rec='   🥇 Tvůj rekord: '+record+' gólů';
+  document.getElementById('stats').textContent=
+    '🏑 Tvoje střely: '+stats.shots+'   🧤 Zákroky tvého brankáře: '+stats.saves+
+    (g?'   ⭐ Nejlepší střelec: '+g[0]+' ('+g[1]+')':'')+rec;
+  if(scoreA>scoreB){confetti(me.x,me.y-100,120);SFX.goal();}
+  document.getElementById('play').textContent='HRÁT ZNOVU';
+}
+
+// ---------- kreslení ----------
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+const crowd=[];
+for(let i=0;i<900;i++)crowd.push({x:Math.random()*FW,y:Math.random()*46,c:`hsl(${Math.random()*360},70%,${45+Math.random()*25}%)`,p:Math.random()*6});
+function drawField(){
+  const g=ctx.createLinearGradient(0,0,0,FH);g.addColorStop(0,'#1b2450');g.addColorStop(1,'#0d1330');
+  ctx.fillStyle=g;ctx.fillRect(0,0,FW,FH);
+  [0,FH-56].forEach(oy=>{
+    ctx.fillStyle='#161d3d';ctx.fillRect(0,oy,FW,56);
+    crowd.forEach(c=>{
+      if(c.x<cam.x-20||c.x>cam.x+VW+20)return;
+      const amp=cheer>0?12:3;
+      const y=oy+8+c.y%34+Math.sin(T/(cheer>0?6:22)+c.p)*amp;
+      ctx.fillStyle=c.c;ctx.beginPath();ctx.arc(c.x,y,5,0,7);ctx.fill();});
+  });
+  const wood=ctx.createLinearGradient(0,rink.y,0,rink.y+rink.h);
+  wood.addColorStop(0,'#2f8f5e');wood.addColorStop(.5,'#38ab70');wood.addColorStop(1,'#2b8256');
+  ctx.fillStyle=wood;roundRect(rink.x,rink.y,rink.w,rink.h,70);ctx.fill();
+  ctx.save();ctx.globalAlpha=.1;
+  for(let x=rink.x;x<rink.x+rink.w;x+=70){ctx.fillStyle=(x/70|0)%2?'#fff':'#000';ctx.fillRect(x,rink.y+6,70,rink.h-12);}
+  ctx.restore();
+  ctx.lineWidth=10;ctx.strokeStyle='#f3f6ff';roundRect(rink.x,rink.y,rink.w,rink.h,70);ctx.stroke();
+  ctx.lineWidth=5;ctx.strokeStyle='#ffffffcc';
+  ctx.beginPath();ctx.moveTo(FW/2,rink.y);ctx.lineTo(FW/2,rink.y+rink.h);ctx.stroke();
+  ctx.beginPath();ctx.arc(FW/2,CY,150,0,7);ctx.stroke();
+  ctx.beginPath();ctx.arc(FW/2,CY,14,0,7);ctx.fillStyle='#ffffffcc';ctx.fill();
+  [rink.x+300,rink.x+rink.w-300].forEach(x=>{ctx.beginPath();ctx.arc(x,CY,190,0,7);ctx.stroke();});
+  // brankoviště
+  [[rink.x,1],[rink.x+rink.w,-1]].forEach(([x,d])=>{
+    ctx.beginPath();ctx.rect(x,CY-190,d*250,380);ctx.stroke();});
+  drawGoal(rink.x+10,TEAMS[keyA].jersey,-1);
+  drawGoal(rink.x+rink.w-10,TEAMS[keyB].jersey,1);
+}
+function drawGoal(x,col,dir){
+  ctx.save();
+  const w=52,gx=dir<0?x:x-w;
+  ctx.fillStyle=col+'55';ctx.strokeStyle=col;ctx.lineWidth=9;
+  ctx.beginPath();ctx.rect(gx,CY-GOALH,w,GOALH*2);ctx.fill();ctx.stroke();
+  ctx.globalAlpha=.55;ctx.lineWidth=2;ctx.strokeStyle='#fff';
+  for(let i=-GOALH;i<=GOALH;i+=15){ctx.beginPath();ctx.moveTo(gx,CY+i);ctx.lineTo(gx+w,CY+i);ctx.stroke();}
+  for(let i=0;i<=w;i+=13){ctx.beginPath();ctx.moveTo(gx+i,CY-GOALH);ctx.lineTo(gx+i,CY+GOALH);ctx.stroke();}
+  ctx.restore();
+}
+function drawPlush(p){
+  const bob=Math.sin(p.anim)*2.5,x=p.x,y=p.y+bob,R=p.r;
+  const dark=shade(p.fur,-45),line=shade(p.fur,-95),pink='#ff9dbb';
+  ctx.save();ctx.textAlign='center';ctx.lineJoin='round';
+  ctx.fillStyle='#00000038';ctx.beginPath();ctx.ellipse(p.x,p.y+R,R*0.85,R*0.3,0,0,7);ctx.fill();
+  if(!p.ref){ctx.strokeStyle=p.jersey;ctx.lineWidth=4;ctx.globalAlpha=.95;
+    ctx.beginPath();ctx.ellipse(p.x,p.y+R*0.95,R,R*0.4,0,0,7);ctx.stroke();ctx.globalAlpha=1;}
+  // hokejka
+  if(!p.ref){
+    const a=Math.atan2(p.dy,p.dx);ctx.lineCap='round';
+    ctx.strokeStyle='#8a5a2b';ctx.lineWidth=4.5;
+    ctx.beginPath();ctx.moveTo(x,y+3);ctx.lineTo(x+Math.cos(a)*(R+20),y+Math.sin(a)*(R+20));ctx.stroke();
+    ctx.strokeStyle=p.jersey;ctx.lineWidth=6;
+    ctx.beginPath();ctx.moveTo(x+Math.cos(a)*(R+14),y+Math.sin(a)*(R+14));
+    ctx.lineTo(x+Math.cos(a+0.9)*(R+24),y+Math.sin(a+0.9)*(R+24));ctx.stroke();
+  }
+  // uši
+  ctx.fillStyle=p.fur;ctx.strokeStyle=line;ctx.lineWidth=Math.max(1.6,R*0.09);
+  if(p.type==='cica'){
+    [-1,1].forEach(s=>{ctx.beginPath();ctx.moveTo(x+s*R*0.62,y-R*0.72);ctx.lineTo(x+s*R*1.02,y-R*1.6);
+      ctx.lineTo(x+s*R*0.14,y-R*1.06);ctx.closePath();ctx.fill();ctx.stroke();
+      ctx.fillStyle=pink;ctx.beginPath();ctx.moveTo(x+s*R*0.6,y-R*0.85);ctx.lineTo(x+s*R*0.86,y-R*1.35);
+      ctx.lineTo(x+s*R*0.34,y-R*1.02);ctx.closePath();ctx.fill();ctx.fillStyle=p.fur;});
+  }else if(p.type==='pejsek'){
+    [-1,1].forEach(s=>{ctx.beginPath();ctx.ellipse(x+s*R*0.9,y-R*0.3,R*0.3,R*0.62,s*0.45,0,7);ctx.fill();ctx.stroke();});
+  }else if(p.type==='zajic'){
+    [-1,1].forEach(s=>{ctx.beginPath();ctx.ellipse(x+s*R*0.46,y-R*1.4,R*0.22,R*0.72,s*0.18,0,7);ctx.fill();ctx.stroke();
+      ctx.fillStyle=pink;ctx.beginPath();ctx.ellipse(x+s*R*0.46,y-R*1.4,R*0.1,R*0.48,s*0.18,0,7);ctx.fill();ctx.fillStyle=p.fur;});
+  }else if(p.type==='panda'){
+    [-1,1].forEach(s=>{ctx.fillStyle='#222';ctx.beginPath();ctx.arc(x+s*R*0.78,y-R*0.78,R*0.34,0,7);ctx.fill();});
+    ctx.fillStyle=p.fur;
+  }else{
+    [-1,1].forEach(s=>{ctx.beginPath();ctx.arc(x+s*R*0.76,y-R*0.76,R*0.34,0,7);ctx.fill();ctx.stroke();
+      ctx.fillStyle=shade(p.fur,25);ctx.beginPath();ctx.arc(x+s*R*0.76,y-R*0.76,R*0.17,0,7);ctx.fill();ctx.fillStyle=p.fur;});
+  }
+  // tělo
+  const g=ctx.createRadialGradient(x-R*0.35,y-R*0.45,R*0.15,x,y,R*1.05);
+  g.addColorStop(0,shade(p.fur,38));g.addColorStop(.65,p.fur);g.addColorStop(1,dark);
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill();
+  ctx.strokeStyle=line;ctx.lineWidth=Math.max(1.6,R*0.09);ctx.stroke();
+  // dres / rozhodčí pruhy
+  ctx.save();ctx.beginPath();ctx.arc(x,y,R-1,0,7);ctx.clip();
+  if(p.ref){
+    ctx.fillStyle='#f2f2f2';ctx.fillRect(x-R,y+R*0.25,R*2,R);
+    ctx.fillStyle='#222';
+    for(let i=-3;i<4;i++)ctx.fillRect(x+i*R*0.32,y+R*0.25,R*0.16,R);
+  }else{
+    ctx.fillStyle=p.jersey;ctx.fillRect(x-R,y+R*0.28,R*2,R);
+    ctx.fillStyle='#ffffffcc';ctx.fillRect(x-R,y+R*0.28,R*2,R*0.13);
+    ctx.fillStyle='#fff';ctx.font='bold '+Math.round(R*0.5)+'px Verdana';
+    ctx.fillText(p.num,x,y+R*0.92);
+  }
+  ctx.restore();
+  // obličej
+  const ex=p.dx*R*0.13,ey=p.dy*R*0.08;
+  if(p.type==='panda'){ctx.fillStyle='#222';[-1,1].forEach(s=>{
+    ctx.beginPath();ctx.ellipse(x+s*R*0.34+ex,y-R*0.14+ey,R*0.26,R*0.3,s*0.4,0,7);ctx.fill();});}
+  [-1,1].forEach(s=>{
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+s*R*0.34+ex,y-R*0.14+ey,R*0.19,0,7);ctx.fill();
+    ctx.fillStyle='#241a12';ctx.beginPath();ctx.arc(x+s*R*0.34+ex*1.5,y-R*0.13+ey,R*0.12,0,7);ctx.fill();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+s*R*0.34+ex*1.5-R*0.05,y-R*0.19+ey,R*0.045,0,7);ctx.fill();});
+  ctx.fillStyle='#e8748f';
+  ctx.beginPath();ctx.moveTo(x+ex-R*0.13,y+R*0.1+ey);ctx.lineTo(x+ex+R*0.13,y+R*0.1+ey);ctx.lineTo(x+ex,y+R*0.24+ey);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#4a3226';ctx.lineWidth=Math.max(1,R*0.06);
+  ctx.beginPath();ctx.arc(x+ex,y+R*0.22+ey,R*0.16,0.25,Math.PI-0.25);ctx.stroke();
+  if(p.type==='cica'){ctx.strokeStyle='#ffffff99';ctx.lineWidth=1.2;
+    [-1,1].forEach(s=>[-0.06,0.08].forEach(o=>{ctx.beginPath();
+      ctx.moveTo(x+s*R*0.28+ex,y+R*0.12+ey);ctx.lineTo(x+s*R*0.95+ex,y+R*(0.12+o)+ey);ctx.stroke();}));}
+  ctx.fillStyle=pink;ctx.globalAlpha=.5;
+  [-1,1].forEach(s=>{ctx.beginPath();ctx.ellipse(x+s*R*0.68+ex,y+R*0.14,R*0.17,R*0.12,0,0,7);ctx.fill();});
+  ctx.globalAlpha=1;
+  // jméno
+  ctx.fillStyle='#fff';ctx.font='bold 13px Verdana';ctx.strokeStyle='#000a';ctx.lineWidth=4;
+  const nm=p.ref?'🐼 rozhodčí':p.name;
+  ctx.strokeText(nm,x,y+R+20);ctx.fillText(nm,x,y+R+20);
+  if(p===me&&running){
+    ctx.strokeStyle='#ffd84d';ctx.lineWidth=5;ctx.beginPath();ctx.arc(p.x,p.y,R+9,0,7);ctx.stroke();
+    const ty=y-R-46+Math.sin(T*0.13)*5;
+    ctx.fillStyle='#ffd84d';ctx.beginPath();ctx.moveTo(x,ty+26);ctx.lineTo(x-16,ty+4);ctx.lineTo(x+16,ty+4);ctx.closePath();ctx.fill();
+    ctx.font='bold 22px Verdana';ctx.strokeStyle='#000';ctx.lineWidth=5;
+    ctx.strokeText('TY',x,ty-4);ctx.fillText('TY',x,ty-4);
+  }
+  if(ball.owner===p){ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.setLineDash([6,6]);
+    ctx.beginPath();ctx.arc(p.x,p.y,R+15,0,7);ctx.stroke();ctx.setLineDash([]);}
+  ctx.restore();
+}
+function drawEffects(){
+  ctx.save();
+  // ohon míčku
+  trail.forEach((t,i)=>{ctx.globalAlpha=i/trail.length*0.45;ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(t.x,t.y,ball.r*(0.3+i/trail.length*0.6),0,7);ctx.fill();});
+  ctx.globalAlpha=1;
+  // konfety
+  parts.forEach(p=>{ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+    ctx.fillStyle=p.c;ctx.globalAlpha=Math.min(1,p.life/40);
+    ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*1.7);ctx.restore();});
+  ctx.restore();
+}
+function drawBall(){
+  ctx.save();
+  ctx.fillStyle='#00000033';ctx.beginPath();ctx.ellipse(ball.x,ball.y+9,10,4,0,0,7);ctx.fill();
+  const g=ctx.createRadialGradient(ball.x-3,ball.y-4,1,ball.x,ball.y,ball.r);
+  g.addColorStop(0,'#fff');g.addColorStop(1,'#c9d2e0');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,7);ctx.fill();
+  ctx.fillStyle='#aab4c6';
+  for(let i=0;i<5;i++){const a=i*1.25+T*0.02;ctx.beginPath();ctx.arc(ball.x+Math.cos(a)*4,ball.y+Math.sin(a)*4,1.8,0,7);ctx.fill();}
+  ctx.restore();
+}
+function drawMinimap(){
+  const mw=270,mh=Math.round(mw*FH/FW),mx=VW-mw-16,my=16,s=mw/FW;
+  ctx.save();
+  ctx.fillStyle='#0b1029d0';roundRect(mx-6,my-6,mw+12,mh+12,10);ctx.fill();
+  ctx.strokeStyle='#ffffff55';ctx.lineWidth=2;roundRect(mx-6,my-6,mw+12,mh+12,10);ctx.stroke();
+  ctx.fillStyle='#2f8f5e';ctx.fillRect(mx,my,mw,mh);
+  ctx.strokeStyle='#ffffff88';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(mx+mw/2,my);ctx.lineTo(mx+mw/2,my+mh);ctx.stroke();
+  ctx.fillStyle=TEAMS[keyA].jersey;ctx.fillRect(mx,my+(CY-GOALH)*s,4,GOALH*2*s);
+  ctx.fillStyle=TEAMS[keyB].jersey;ctx.fillRect(mx+mw-4,my+(CY-GOALH)*s,4,GOALH*2*s);
+  players.forEach(p=>{ctx.fillStyle=p.jersey;ctx.beginPath();ctx.arc(mx+p.x*s,my+p.y*s,3.6,0,7);ctx.fill();});
+  if(referee){ctx.fillStyle='#eee';ctx.beginPath();ctx.arc(mx+referee.x*s,my+referee.y*s,3,0,7);ctx.fill();}
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(mx+ball.x*s,my+ball.y*s,3,0,7);ctx.fill();
+  ctx.strokeStyle='#ffd84d';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(mx+me.x*s,my+me.y*s,6,0,7);ctx.stroke();
+  ctx.strokeStyle='#ffffffaa';ctx.strokeRect(mx+cam.x*s,my+cam.y*s,VW*s,VH*s);
+  ctx.restore();
+}
+function drawHud(){
+  ctx.save();ctx.textAlign='center';
+  ctx.fillStyle='#0b1029dd';roundRect(VW/2-330,6,660,54,16);ctx.fill();
+  ctx.strokeStyle='#ffd84d';ctx.lineWidth=3;roundRect(VW/2-330,6,660,54,16);ctx.stroke();
+  ctx.font='bold 27px Verdana';
+  ctx.fillStyle=TEAMS[keyA].jersey;ctx.fillText(TEAMS[keyA].emoji+' '+TEAMS[keyA].label+' (ty) '+scoreA,VW/2-175,44);
+  ctx.fillStyle='#fff';ctx.font='bold 30px Verdana';
+  if(mode==='match'){const mm=Math.floor(timeLeft/60),ss=Math.floor(timeLeft%60);
+    ctx.fillText(mm+':'+(ss<10?'0':'')+ss,VW/2,44);}
+  else ctx.fillText(Math.ceil(pen.timer)+'s',VW/2,44);
+  ctx.font='bold 27px Verdana';
+  ctx.fillStyle=TEAMS[keyB].jersey;ctx.fillText(scoreB+' '+TEAMS[keyB].label+' '+TEAMS[keyB].emoji,VW/2+175,44);
+  if(mode==='shootout'){
+    ctx.font='bold 22px Verdana';ctx.fillStyle='#ffd84d';
+    ctx.fillText('🎯 NÁJEZD '+pen.round+' – '+(pen.turn==='A'?'střílíš TY':'střílí soupeř'),VW/2,88);
+  }
+  // ovládání
+  const bx=16,by=VH-216;
+  ctx.fillStyle='#0b1029cc';roundRect(bx,by,296,200,14);ctx.fill();
+  ctx.strokeStyle='#ffffff44';ctx.lineWidth=2;roundRect(bx,by,296,200,14);ctx.stroke();
+  ctx.textAlign='left';ctx.font='bold 17px Verdana';ctx.fillStyle='#ffd84d';
+  ctx.fillText('OVLÁDÁNÍ',bx+14,by+24);
+  ctx.font='15px Verdana';ctx.fillStyle='#dce6ff';
+  ['šipky / W A S D = pohyb','MEZERNÍK (drž) = nabít střelu','V = vypíchnout míček','N = nahrát',
+   'B = stop, SHIFT = sprint','Z = vystřídat hráče','P nebo ESC = pauza']
+   .forEach((s,i)=>ctx.fillText(s,bx+14,by+50+i*22));
+  if(msgT>0){
+    ctx.textAlign='center';ctx.globalAlpha=Math.min(1,msgT/25);
+    ctx.font='bold 42px Verdana';ctx.fillStyle='#ffd84d';ctx.strokeStyle='#000';ctx.lineWidth=7;
+    ctx.strokeText(msg,VW/2,VH-70);ctx.fillText(msg,VW/2,VH-70);
+  }
+  ctx.restore();
+}
+function drawExtras(){
+  ctx.save();
+  // ukazatel síly střely
+  if(charging&&running){
+    const x=me.x-cam.x-40,y=me.y-cam.y-me.r-58;
+    ctx.fillStyle='#0b1029cc';roundRect(x-4,y-4,88,18,8);ctx.fill();
+    const g=ctx.createLinearGradient(x,0,x+80,0);
+    g.addColorStop(0,'#3fdc6a');g.addColorStop(.6,'#ffd84d');g.addColorStop(1,'#e8433f');
+    ctx.fillStyle=g;ctx.fillRect(x,y,80*charge,10);
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(x,y,80,10);
+  }
+  // ukazatel energie na sprint
+  const bx=16,by=VH-242;
+  ctx.fillStyle='#0b1029cc';roundRect(bx,by,286,22,8);ctx.fill();
+  ctx.fillStyle=stamina>25?'#3fdc6a':'#e8433f';ctx.fillRect(bx+6,by+6,(286-12)*stamina/100,10);
+  ctx.fillStyle='#dce6ff';ctx.font='bold 12px Verdana';ctx.textAlign='left';
+  ctx.fillText('ENERGIE (SHIFT = sprint)',bx+10,by+16);
+  // šipka k míčku, když není vidět
+  if(ball.x<cam.x+30||ball.x>cam.x+VW-30||ball.y<cam.y+30||ball.y>cam.y+VH-30){
+    const cx=VW/2,cy=VH/2,a=Math.atan2(ball.y-cam.y-cy,ball.x-cam.x-cx);
+    const px=cx+Math.cos(a)*(VW/2-70),py=cy+Math.sin(a)*(VH/2-70);
+    ctx.save();ctx.translate(px,py);ctx.rotate(a);
+    ctx.fillStyle='#ffd84d';ctx.beginPath();ctx.moveTo(20,0);ctx.lineTo(-12,-13);ctx.lineTo(-12,13);ctx.closePath();ctx.fill();
+    ctx.restore();
+    ctx.fillStyle='#ffd84d';ctx.font='bold 13px Verdana';ctx.textAlign='center';
+    ctx.fillText('míček',px,py+30);
+  }
+  if(paused){
+    ctx.fillStyle='#000a';ctx.fillRect(0,0,VW,VH);
+    ctx.textAlign='center';ctx.fillStyle='#ffd84d';ctx.font='bold 64px Verdana';
+    ctx.fillText('⏸ PAUZA',VW/2,VH/2);
+    ctx.font='22px Verdana';ctx.fillStyle='#cfe0ff';
+    ctx.fillText('zmáčkni P nebo ESC a hraje se dál',VW/2,VH/2+46);
+  }
+  ctx.restore();
+}
+function loop(){
+  T++;
+  if(!paused)step();
+  if(cheer>0)cheer--;
+  parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.35;p.vx*=0.99;p.rot+=0.15;p.life--;});
+  parts=parts.filter(p=>p.life>0);
+  if(!ball.owner&&Math.hypot(ball.vx,ball.vy)>5)trail.push({x:ball.x,y:ball.y});
+  while(trail.length>10)trail.shift();
+  if(ball.owner)trail.length=0;
+  const tx=Math.max(0,Math.min(FW-VW,me.x-VW/2)),ty=Math.max(0,Math.min(FH-VH,me.y-VH/2));
+  cam.x+=(tx-cam.x)*0.09;cam.y+=(ty-cam.y)*0.09;
+  ctx.clearRect(0,0,VW,VH);
+  if(shake>0)shake*=0.88;
+  const sx=shake>0.5?(Math.random()-.5)*shake:0,sy=shake>0.5?(Math.random()-.5)*shake:0;
+  ctx.save();ctx.translate(-Math.round(cam.x)+sx,-Math.round(cam.y)+sy);
+  drawField();
+  players.filter(p=>p.team==='B').forEach(drawPlush);
+  if(referee)drawPlush(referee);
+  players.filter(p=>p.team==='A').forEach(drawPlush);
+  drawEffects();drawBall();
+  ctx.restore();
+  drawHud();drawExtras();drawMinimap();
+  requestAnimationFrame(loop);
+}
+// ---------- menu ----------
+document.querySelectorAll('#diff .dbtn').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#diff .dbtn').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');diff=+b.dataset.d;});
+function buildSel(id){
+  const box=document.getElementById(id);box.innerHTML='';
+  Object.keys(TEAMS).forEach(k=>{
+    const t=TEAMS[k],b=document.createElement('button');
+    b.className='dbtn'+((id==='selA'?keyA:keyB)===k?' on':'');
+    b.textContent=t.emoji+' '+t.label;b.style.borderColor=t.jersey;
+    b.onclick=()=>{
+      if(id==='selA'){keyA=k;if(keyB===k)keyB=Object.keys(TEAMS).find(x=>x!==k);}
+      else{keyB=k;if(keyA===k)keyA=Object.keys(TEAMS).find(x=>x!==k);}
+      buildSel('selA');buildSel('selB');makeTeams();};
+    box.appendChild(b);});
+}
+buildSel('selA');buildSel('selB');
+function startCommon(){
+  document.getElementById('menu').style.display='none';
+  document.getElementById('stats').textContent='';
+  scoreA=0;scoreB=0;over=false;paused=false;charging=false;charge=0;stamina=100;
+  stats={shots:0,saves:0,goals:{}};parts=[];trail=[];lastShooter=null;
+  beep(660,0.08,'triangle',0.04);   // odemkne zvuk (potřebuje kliknutí)
+}
+document.getElementById('play').onclick=()=>{
+  startCommon();mode='match';timeLeft=180;resetPositions(1);running=true;say('Začínáme! 🏑');};
+document.getElementById('playPen').onclick=()=>{
+  startCommon();makeTeams();startPens(false);say('Nájezdy! 5 pokusů pro každého 🎯');};
+makeTeams();resetPositions(1);loop();
+</script>
+</body>
+</html>
