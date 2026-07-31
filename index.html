@@ -75,6 +75,7 @@ let diff=1,running=false,over=false,mode='match';
 let msg="",msgT=0,timeLeft=180,scoreA=0,scoreB=0,T=0,pauseT=0,pauseFn=null;
 let pen=null; // stav nájezdů
 let paused=false,charging=false,charge=0,stamina=100,cheer=0,lastShooter=null,shake=0;
+let dohravka=0;   // po vyprseni casu se dohraje rozehrana akce
 let record=+(localStorage.getItem('florbalRekord')||0);
 let stats={shots:0,saves:0,goals:{}};
 let parts=[],trail=[];
@@ -183,8 +184,19 @@ function setupPen(turn){
 }
 function penNext(){
   /* Náhlá smrt bez stropu se umí vléct donekonečna (bot míří doprostřed,
-     brankář tam stojí). Po třech kolech navíc rozhodne los, ať se jde hrát. */
-  if(pen&&pen.round>pen.max+4){penEnd(scoreA>=scoreB?'Vyhráls na nájezdy! 🏆':'Soupeř měl větší štěstí 😿');return;}
+     brankář tam stojí – ve třech ze čtyř zkoušených rozstřelů se to zaseklo
+     na desátém kole).
+     POZOR: první pokus o pojistku volal odsud penEnd() – jenže ta se hned
+     vrátí, protože `pen.done` je z předchozího kola pořád true. Hra tím
+     zůstala stát nadobro: běh vypnutý, časovač záporný, step() se rovnou
+     vracel a dítě koukalo na zamrzlou obrazovku. Proto se tu končí přímo
+     přes endGame(). */
+  if(pen&&pen.round>pen.max+4){
+    pen.done=true;running=false;
+    say(scoreA===scoreB?'Ani rozstřel nerozhodl – remíza! 🤝'
+        :(scoreA>scoreB?'Vyhráls na nájezdy! 🏆':'Soupeř měl větší štěstí 😿'));
+    endGame();return;
+  }
   if(pen.turn==='A'){pen.turn='B';setupPen('B');return;}
   pen.round++;pen.turn='A';
   const left=pen.max-pen.round+1;
@@ -244,16 +256,26 @@ function shoot(power){
   const side=gk?(gk.y>CY?-1:1):(Math.random()<.5?-1:1);
   const gy=CY+side*GOALH*(0.55+0.3*p)+(Math.random()-.5)*GOALH*(1.1-p*0.8);
   let dx=GL_R-me.x,dy=gy-me.y,d=Math.hypot(dx,dy)||1;
+  let odpal=false;
   if(d>820){
-    /* Z takové dálky se na bránu netrefíš – míček letěl směrem, kterým se
-       díváš, a vypadalo to jako rozbitá střela. Radši to řekneme nahlas. */
-    dx=me.dx;dy=me.dy;d=Math.hypot(dx,dy)||1;
-    say('Moc daleko na bránu – jen odpal! 🏑');
+    /* Z takové dálky se na bránu netrefíš – míček letí směrem, kterým se
+       díváš. Dvě věci to dělaly nefér: (a) varování hned přebila hláška
+       „pálí ze všech sil", takže ho dítě nikdy nevidělo, (b) když couvající
+       obránce koukal ke svojí brance, nabitá střela skončila ve VLASTNÍ
+       síti. Odpal proto vždycky míří aspoň trochu dopředu. */
+    odpal=true;
+    dx=me.dx;dy=me.dy;
+    if(dx<0.25){dx=0.6;dy=(me.y<CY?-1:1)*0.5;}   // nikdy ne zpátky na vlastní bránu
+    d=Math.hypot(dx,dy)||1;
   }
   const v=13+p*15;
   ball.owner=null;ball.free=11;ball.vx=dx/d*v;ball.vy=dy/d*v;me.cool=18;
-  lastShooter=me.name;stats.shots++;SFX.shot(p);
-  say(me.name+(p>0.8?' pálí ze všech sil! 💥':' střílí! 🏑'));
+  lastShooter=me.name;
+  /* Odpal z dálky NENÍ střela na bránu – dřív se počítal do statistiky
+     a kazil ji (452 „střel" s jednoprocentní úspěšností na pět zápasů). */
+  if(odpal){ SFX.pass(); say('Moc daleko na bránu – jen odpal dopředu! 🏑'); }
+  else { stats.shots++; SFX.shot(p);
+    say(me.name+(p>0.8?' pálí ze všech sil! 💥':' střílí! 🏑')); }
 }
 function pass(){
   if(!running||paused||ball.owner!==me)return;
@@ -325,7 +347,7 @@ function pickMe(){
   }
 }
 function switchPlayer(){
-  if(!running||mode!=='match')return;
+  if(!running||paused||mode!=='match')return;   // v pauze je zamčené všechno ostatní, ať i tohle
   const n=nearestOf('A');
   if(!n||n===me)return;
   me=n;me.vx*=0.4;me.vy*=0.4;
@@ -392,9 +414,22 @@ function step(){
   if(pauseT>0){if(--pauseT===0&&pauseFn){const f=pauseFn;pauseFn=null;f();}return;}
   if(!running)return;
   if(mode==='match'){
-    timeLeft-=1/60;
-    if(timeLeft<=0){timeLeft=0;
-      if(scoreA===scoreB){startPens(true);return;} endGame();return;}
+    /* Když čas došel zrovna ve chvíli, kdy míček letěl na bránu, dřív se ten
+       snímek vůbec nedopočítal – míček zamrzl ve vzduchu a gól se ztratil
+       (naměřeno na ráně ~5 snímků před brankou). Jako ve skutečném sportu
+       se proto dohraje rozehraná akce: čas běží dál, dokud míček někdo
+       nechytí nebo se nezastaví, nejvýš tři vteřiny. */
+    if(dohravka<=0){
+      timeLeft-=1/60;
+      if(timeLeft<=0){timeLeft=0;dohravka=0.001;say('Poslední akce! ⏱');}
+    }else{
+      dohravka+=1/60;
+      const klid = ball.owner || Math.hypot(ball.vx,ball.vy)<2.5;
+      if(klid||dohravka>3){
+        dohravka=0;
+        if(scoreA===scoreB){startPens(true);return;} endGame();return;
+      }
+    }
   }else{
     pen.timer-=1/60;
     if(pen.timer<=0){penEnd(pen.turn==='A'?'Čas vypršel – nedal jsi 😿':'Soupeř nedal! 🎉');return;}
@@ -823,7 +858,7 @@ if(ticho){const b=document.getElementById('bMute');if(b)b.innerHTML='🔇 ZVUK<s
 function startCommon(){
   document.getElementById('menu').style.display='none';
   document.getElementById('stats').textContent='';
-  scoreA=0;scoreB=0;over=false;paused=false;charging=false;charge=0;stamina=100;
+  scoreA=0;scoreB=0;over=false;paused=false;charging=false;charge=0;stamina=100;dohravka=0;
   stats={shots:0,saves:0,goals:{}};parts=[];trail=[];lastShooter=null;
   beep(660,0.08,'triangle',0.04);   // odemkne zvuk (potřebuje kliknutí)
 }
