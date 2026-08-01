@@ -139,7 +139,7 @@ const TEAMS={
     names:['Hráz','Dřevák','Ořech','Klacík','Splávek','Bobrouš']},
   cici:{label:'ČÍČI',emoji:'🐱',type:'cica',jersey:'#ff8a3d',
     furs:['#2b2b2b','#3a3a3a','#242424','#333029','#2f2a26','#363636'],
-    names:['Sazka','Půlnoc','Uhlík','Stín','Saze','Noční']},
+    names:['Sazka','Mystic','Uhlík','Stín','Saze','Noční']},
   vlcci:{label:'VLČCI',emoji:'🐺',type:'vlk',jersey:'#e8433f',
     furs:['#6fb3e0','#8fc7ea','#5a9fd4','#7ec0e8','#4f8fc4','#9ccfee'],
     names:['Fenrík','Mráz','Ledovka','Vichr','Polárka','Šedivka']},
@@ -149,9 +149,9 @@ const TEAMS={
   veverky:{label:'VEVERKY',emoji:'🐿️',type:'veverka',jersey:'#3fbf6a',
     furs:['#e8823d','#f0a35e','#d9702c','#eb9650','#c96a28','#f2b06e'],
     names:['Oříšek','Skokan','Pruhovka','Žaludka','Chvostík','Ratolest']},
-  taborci:{label:'TÁBORCI',emoji:'🏕️',type:'tabor',jersey:'#2fc4c4',
+  mysky:{label:'MYŠKY',emoji:'🐭',type:'mysky',jersey:'#2fc4c4',
     furs:['#f5e6ee','#fbe0ea','#f0d2e0','#f7ece9','#f2d9e6','#fbe8ee'],
-    names:['Táborák','Jiskra','Plamínek','Kotlík','Stan','Popelka']},
+    names:['Sýreček','Culík','Drobeček','Pinďa','Růženka','Ocásek']},
   pejsci:{label:'PEJSCI',emoji:'🐶',type:'pejsek',jersey:'#2f7ddb',
     furs:['#d9955a','#c97b3d','#e0b07a','#b9723a','#cf8a4d','#a35f2a'],
     names:['Dunčo','Rex','Brok','Bafík','Punťa','Alík']}
@@ -726,10 +726,15 @@ function drawPlush(p){
   // uši
   ctx.fillStyle=p.fur;ctx.strokeStyle=line;ctx.lineWidth=Math.max(1.6,R*0.09);
   if(p.type==='cica'||p.type==='vlk'){
-    [-1,1].forEach(s=>{ctx.beginPath();ctx.moveTo(x+s*R*0.62,y-R*0.72);ctx.lineTo(x+s*R*1.02,y-R*1.6);
-      ctx.lineTo(x+s*R*0.14,y-R*1.06);ctx.closePath();ctx.fill();ctx.stroke();
-      ctx.fillStyle=pink;ctx.beginPath();ctx.moveTo(x+s*R*0.6,y-R*0.85);ctx.lineTo(x+s*R*0.86,y-R*1.35);
-      ctx.lineTo(x+s*R*0.34,y-R*1.02);ctx.closePath();ctx.fill();ctx.fillStyle=p.fur;});
+    [-1,1].forEach(s=>{
+      ctx.beginPath();ctx.moveTo(x+s*R*0.58,y-R*0.68);
+      ctx.quadraticCurveTo(x+s*R*0.98,y-R*1.28,x+s*R*0.6,y-R*1.4);
+      ctx.quadraticCurveTo(x+s*R*0.28,y-R*1.26,x+s*R*0.14,y-R*0.94);
+      ctx.closePath();ctx.fill();ctx.stroke();
+      ctx.fillStyle=pink;ctx.beginPath();ctx.moveTo(x+s*R*0.56,y-R*0.78);
+      ctx.quadraticCurveTo(x+s*R*0.8,y-R*1.16,x+s*R*0.58,y-R*1.22);
+      ctx.quadraticCurveTo(x+s*R*0.4,y-R*1.1,x+s*R*0.32,y-R*0.9);
+      ctx.closePath();ctx.fill();ctx.fillStyle=p.fur;});
   }else if(p.type==='pejsek'){
     [-1,1].forEach(s=>{ctx.beginPath();ctx.ellipse(x+s*R*0.9,y-R*0.3,R*0.3,R*0.62,s*0.45,0,7);ctx.fill();ctx.stroke();});
   }else if(p.type==='zajic'){
