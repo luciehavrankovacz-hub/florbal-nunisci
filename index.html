@@ -190,6 +190,11 @@ function makeTeams(){
   players.push(P(B.names[0],B.type,B.furs[0],B.jersey,'B',rink.x+rink.w-70,CY,true));
   FORM.forEach((f,i)=>players.push(P(B.names[i+1],B.type,B.furs[i+1],B.jersey,'B',rink.x+rink.w-f[0],CY-f[1])));
   assignNums(players.slice(0,6),A);assignNums(players.slice(6,12),B);
+  // kapitán (číslo 7) nestojí vzadu v obraně, ale hned u středu – je to ten, kdo dává góly
+  const capA=players.find(p=>p.team==='A'&&p.num===7&&!p.goalie);
+  if(capA){capA.x=FW/2-40;capA.y=CY;}
+  const capB=players.find(p=>p.team==='B'&&p.num===7&&!p.goalie);
+  if(capB){capB.x=FW/2+40;capB.y=CY;}
   players.forEach(p=>{p.hx=p.x;p.hy=p.y;});
   referee=P('Pandík','panda','#ffffff','#222222','R',FW/2,CY-260,false,true);
   coachA=makeCoach(keyA,'A');coachB=makeCoach(keyB,'B');
