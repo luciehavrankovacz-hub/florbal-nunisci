@@ -46,7 +46,8 @@
        Hraje se <b>5+1 na 5+1</b>. Hráče si přepínáš tlačítkem <b>PŘEPNOUT HRÁČE (Z)</b> – vezme toho nejblíž míčku. Když zůstaneš v obraně daleko od míčku, hra tě přepne sama. Klávesa <b>V</b> zároveň seber volný míček, když je blízko.
        Sám od sebe se hráč změní jen tehdy, když tvůj tým získá míček (má nad sebou žlutou šipku <b>TY</b>).<br>
        Pohyb: <b>šipky</b> nebo <b>W A S D</b> (nebo drž myš). Píská <b>rozhodčí Pandík</b> 🐼 –
-       když někdo ošklivě vypíchne míček, odpíská <b>faul a nájezd</b>. Když nájezd kope soupeř, chytáš za brankáře!</p>
+       když někdo ošklivě vypíchne míček, odpíská <b>faul a nájezd</b>. Když nájezd kope soupeř, chytáš za brankáře!
+       Na okraji hřiště fandí <b>trenéři</b> obou týmů – při gólu skáčou nejvíc! 📣</p>
     <div class="row"><span class="lab">Hraješ za:</span><div class="row" id="selA"></div></div>
     <div class="row"><span class="lab">Soupeř:</span><div class="row" id="selB"></div></div>
     <div class="row"><span class="lab">Síla bota:</span>
@@ -136,6 +137,12 @@ function P(name,type,fur,jersey,team,x,y,goalie,ref){
           dx:team==='A'?1:-1,dy:0,goalie:!!goalie,ref:!!ref,cool:0,anim:Math.random()*6};
 }
 let players=[],me=null,referee=null;
+let coachA=null,coachB=null;
+function makeCoach(teamKey,team){
+  const Tm=TEAMS[teamKey];
+  return {team,jersey:Tm.jersey,fur:Tm.furs[0],
+          x:team==='A'?rink.x+150:rink.x+rink.w-150,y:rink.y-42,anim:Math.random()*6};
+}
 const ball={x:FW/2,y:CY,vx:0,vy:0,r:10,owner:null,free:0};
 
 // rozestavení 5 hráčů + brankář
@@ -150,6 +157,7 @@ function makeTeams(){
   const nums=[1,4,5,7,9,10];
   players.forEach((p,i)=>{p.num=nums[i%6];p.hx=p.x;p.hy=p.y;});
   referee=P('Pandík','panda','#ffffff','#222222','R',FW/2,CY-260,false,true);
+  coachA=makeCoach(keyA,'A');coachB=makeCoach(keyB,'B');
   me=players[3];
 }
 function shade(hex,amt){
@@ -704,6 +712,36 @@ function drawPlush(p){
     ctx.beginPath();ctx.arc(p.x,p.y,R+15,0,7);ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();
 }
+function drawCoach(c){
+  const excited=cheer>0||(ball.owner&&ball.owner.team===c.team);
+  c.anim+=excited?0.35:0.08;
+  const bob=Math.abs(Math.sin(c.anim))*(excited?14:3),x=c.x,y=c.y-bob,R=17;
+  ctx.save();ctx.textAlign='center';ctx.lineCap='round';
+  ctx.fillStyle='#00000030';ctx.beginPath();ctx.ellipse(c.x,c.y+6,14,5,0,0,7);ctx.fill();
+  ctx.strokeStyle=shade(c.jersey,-30);ctx.lineWidth=6;
+  ctx.beginPath();ctx.moveTo(x-6,y+R*0.8);ctx.lineTo(x-9,y+R*1.6);ctx.moveTo(x+6,y+R*0.8);ctx.lineTo(x+9,y+R*1.6);ctx.stroke();
+  ctx.fillStyle=c.jersey;ctx.beginPath();ctx.ellipse(x,y+R*0.55,R*0.85,R*0.9,0,0,7);ctx.fill();
+  const armY=excited?y-R*0.3:y+R*0.5,armSpread=excited?R*1.3:R*0.5;
+  ctx.strokeStyle=c.jersey;ctx.lineWidth=6;
+  ctx.beginPath();ctx.moveTo(x-R*0.6,y+R*0.3);ctx.lineTo(x-armSpread,armY);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x+R*0.6,y+R*0.3);ctx.lineTo(x+armSpread,armY);ctx.stroke();
+  ctx.fillStyle=shade(c.jersey,60);
+  [-1,1].forEach(s=>{ctx.beginPath();ctx.arc(x+s*armSpread,armY,6,0,7);ctx.fill();});
+  const g=ctx.createRadialGradient(x-5,y-5,2,x,y,R*0.55);
+  g.addColorStop(0,shade(c.fur,30));g.addColorStop(1,c.fur);
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,R*0.55,0,7);ctx.fill();
+  ctx.strokeStyle=shade(c.fur,-60);ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle=c.jersey;ctx.beginPath();ctx.arc(x,y-R*0.1,R*0.58,Math.PI,Math.PI*2);ctx.fill();
+  ctx.fillRect(x-2,y-R*0.62,R*0.7,5);
+  ctx.fillStyle='#241a12';
+  ctx.beginPath();ctx.arc(x-5,y-2,2,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(x+5,y-2,2,0,7);ctx.fill();
+  ctx.strokeStyle='#4a3226';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.arc(x,y+4,5,0.2,Math.PI-0.2);ctx.stroke();
+  ctx.fillStyle='#fff';ctx.font='bold 12px Verdana';ctx.strokeStyle='#000a';ctx.lineWidth=3;
+  ctx.strokeText('trenér',x,y+R+18);ctx.fillText('trenér',x,y+R+18);
+  ctx.restore();
+}
 function drawEffects(){
   ctx.save();
   // ohon míčku
@@ -829,6 +867,7 @@ function loop(){
   const sx=shake>0.5?(Math.random()-.5)*shake:0,sy=shake>0.5?(Math.random()-.5)*shake:0;
   ctx.save();ctx.translate(-Math.round(cam.x)+sx,-Math.round(cam.y)+sy);
   drawField();
+  if(coachA)drawCoach(coachA);if(coachB)drawCoach(coachB);
   players.filter(p=>p.team==='B').forEach(drawPlush);
   if(referee)drawPlush(referee);
   players.filter(p=>p.team==='A').forEach(drawPlush);
