@@ -40,6 +40,17 @@ Vše je v `index.html`, žádné děleni na díly (na rozdíl od Země Ňuňísk
 
 Šipky/WASD nebo myš = pohyb, mezerník (držet) = nabitá střela, V = vypíchnout, N = nahrát (chytřejší nahrávka — hledá volného spoluhráče vepředu, ne jen nejbližšího), B = stop, Shift = sprint (ubývá energie), Z = vystřídat hráče, P/Esc = pauza.
 
+## Hraní přes internet – připravené, ale zatím nezapojené
+
+Ve složce **`multiplayer/`** leží hotová krabička na spojení dvou (až osmi)
+počítačů: `sit.js` (celé spojení, žádná knihovna, žádný server), `ukazka.html`
+(funkční mini-hra, na které se dá hned vyzkoušet, že spojení jede) a
+**`NAVOD.md`** — návod krok za krokem, kam co ve `florbal/index.html` dopsat.
+
+Ve hře samotné zatím **není změněný ani řádek**. Až bude chuť hrát proti
+kamarádovi místo proti botovi, projde se návod. Je to stejný kód, jaký běží
+v Zemi Ňuňísků, takže spojení přes tři písmenka je odzkoušené.
+
 ## Nápady na vylepšení (neřešeno)
 
 - Víc týmů/postaviček podle dalších plyšáků.

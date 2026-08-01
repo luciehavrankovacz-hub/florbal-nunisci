@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ukázka: hraní přes internet</title>
+<style>
+  body{margin:0;background:#101828;color:#e8eeff;font:16px/1.5 system-ui,sans-serif;
+       display:flex;flex-direction:column;align-items:center;padding:18px}
+  h1{font-size:22px;margin:0 0 6px}
+  p.pod{opacity:.75;margin:0 0 14px;text-align:center;max-width:640px}
+  #panel{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:12px}
+  button{padding:10px 18px;border:0;border-radius:10px;background:#3f7bd8;color:#fff;
+         font-size:16px;font-weight:700;cursor:pointer}
+  button.sedy{background:#3a4560}
+  input{padding:10px;border-radius:10px;border:2px solid #3a4560;background:#1b2436;
+        color:#fff;font-size:18px;width:90px;text-transform:uppercase;text-align:center}
+  #stav{min-height:26px;font-weight:700;color:#ffd76a;margin-bottom:8px}
+  canvas{background:#16213a;border-radius:12px;border:2px solid #2c3a58;max-width:100%}
+  code{background:#1b2436;padding:2px 7px;border-radius:6px}
+</style>
+</head>
+<body>
+
+<h1>Ukázka: hraní přes internet</h1>
+<p class="pod">Dvě kolečka a míček. Nic víc – jde jen o to ukázat,
+že spojení funguje a jak se posílá stav. Jeden založí hru, druhý
+opíše tři písmenka. Ovládání: <b>šipky</b> nebo <b>WASD</b>.</p>
+
+<div id="panel">
+  <button id="btnZaloz">Založit hru</button>
+  <input id="poleKod" maxlength="3" placeholder="K7A">
+  <button id="btnPripoj" class="sedy">Připojit se</button>
+</div>
+<div id="stav">Zatím nikam nepřipojeno – hraješ si sám.</div>
+<canvas id="platno" width="720" height="420"></canvas>
+
+<script src="sit.js"></script>
+<script>
+/* ============================================================
+   Tohle je NEJKRATŠÍ MOŽNÝ multiplayer, který funguje správně.
+   Když pochopíš těch pár řádků dole, přepsat to na florbal nebo
+   fotbal je pak už jen opisování.
+   ============================================================ */
+
+SIT.jmeno = "flo-ukazka";
+SIT.verze = "u1";
+
+const pl = document.getElementById("platno"), c = pl.getContext("2d");
+const W = 720, H = 420;
+
+/* ---- svět (u hostitele je to pravda, u kamaráda jen obrázek) ---- */
+const svet = {
+  hraci: [{x:150, y:210, b:"#ffd76a"}, {x:570, y:210, b:"#6ad2ff"}],
+  mic: {x:360, y:210, vx:200, vy:130}
+};
+
+/* ---- klávesy ---- */
+const kl = {};
+addEventListener("keydown", e => { kl[e.key.toLowerCase()] = true;
+  if(e.key.startsWith("Arrow")) e.preventDefault(); });
+addEventListener("keyup",   e => { kl[e.key.toLowerCase()] = false; });
+
+function smerZKlaves(k){
+  let x = 0, y = 0;
+  if(k["arrowleft"] || k["a"]) x -= 1;
+  if(k["arrowright"]|| k["d"]) x += 1;
+  if(k["arrowup"]   || k["w"]) y -= 1;
+  if(k["arrowdown"] || k["s"]) y += 1;
+  return {x, y};
+}
+
+/* Hostitel si drží, co mu kamarád naposled zmáčkl. */
+const cizi = {1:{x:0,y:0}};
+
+/* ============================================================
+   1) KAMARÁD POSÍLÁ KLÁVESY, NE POLOHU
+   ============================================================ */
+let poslano = 0;
+function posliSvojeKlavesy(){
+  if(!SIT.zapnuto || SIT.jsemHost) return;
+  const s = smerZKlaves(kl);
+  /* Posílá se jen když se něco změnilo – jinak by to bylo 60 zpráv
+     za vteřinu úplně zbytečně.
+     ALE: zapamatovat si to smíme AŽ KDYŽ TO OPRAVDU ODEŠLO. Dokud se
+     kanál otvírá, `rychle()` vrací false a zpráva se ztratí – a kdybychom
+     si ji odškrtli, kamarád by se pak nehnul, protože „změna už byla“. */
+  if(s.x === posl.x && s.y === posl.y) return;
+  if(SIT.rychle({t:"klavesy", x:s.x, y:s.y})){ posl = s; poslano++; }
+}
+let posl = {x:0, y:0};
+
+/* ============================================================
+   2) HOSTITEL POČÍTÁ SVĚT A ROZESÍLÁ OBRÁZEK STAVU
+   ============================================================ */
+function krok(dt){
+  if(SIT.zapnuto && !SIT.jsemHost) return;   // kamarád nepočítá nic!
+
+  const smery = [smerZKlaves(kl), cizi[1] || {x:0,y:0}];
+  svet.hraci.forEach((h, i) => {
+    const s = smery[i] || {x:0,y:0};
+    h.x = Math.max(24, Math.min(W-24, h.x + s.x*300*dt));
+    h.y = Math.max(24, Math.min(H-24, h.y + s.y*300*dt));
+  });
+
+  const m = svet.mic;
+  m.x += m.vx*dt; m.y += m.vy*dt;
+  if(m.x < 12 || m.x > W-12){ m.vx *= -1; m.x = Math.max(12, Math.min(W-12, m.x)); }
+  if(m.y < 12 || m.y > H-12){ m.vy *= -1; m.y = Math.max(12, Math.min(H-12, m.y)); }
+  svet.hraci.forEach(h => {
+    const dx = m.x-h.x, dy = m.y-h.y, d = Math.hypot(dx, dy);
+    if(d < 34 && d > 0){
+      const rychlost = Math.hypot(m.vx, m.vy) * 1.04;
+      m.vx = dx/d*rychlost; m.vy = dy/d*rychlost;
+      m.x = h.x + dx/d*35; m.y = h.y + dy/d*35;
+    }
+  });
+}
+
+let odesilaniCas = 0;
+function rozesliStav(dt){
+  if(!SIT.zapnuto || !SIT.jsemHost) return;
+  odesilaniCas += dt;
+  if(odesilaniCas < 1/20) return;      // 20× za vteřinu bohatě stačí
+  odesilaniCas = 0;
+  SIT.rychle({t:"stav",
+    h: svet.hraci.map(h => [Math.round(h.x), Math.round(h.y)]),
+    m: [Math.round(svet.mic.x), Math.round(svet.mic.y)]});
+}
+
+/* ============================================================
+   3) PŘÍJEM
+   ============================================================ */
+let prijato = 0;
+let rozdil = -1;
+SIT.kdyzPrijde = (z, od) => {
+  if(z.t === "kontrola" && !SIT.jsemHost){
+    /* Porovnání v PŘESNĚ STEJNÝ okamžik: hostitel pošle, kde má míček,
+       a kamarád se hned podívá, jak daleko ho má on. */
+    rozdil = Math.round(Math.hypot(z.m[0]-svet.mic.x, z.m[1]-svet.mic.y));
+    return;
+  }
+  if(z.t === "klavesy" && SIT.jsemHost){ cizi[od] = {x:z.x, y:z.y}; prijato++; }
+  if(z.t === "stav" && !SIT.jsemHost){
+    prijato++;
+    /* Obrázek stavu se nenastavuje natvrdo – dojíždí se k němu.
+       Natvrdo by panáčci poskakovali při každém zakolísání sítě. */
+    z.h.forEach((p, i) => { if(svet.hraci[i]){ svet.hraci[i].cx = p[0]; svet.hraci[i].cy = p[1]; } });
+    svet.mic.cx = z.m[0]; svet.mic.cy = z.m[1];
+  }
+};
+function dojedNaCil(dt){
+  if(!SIT.zapnuto || SIT.jsemHost) return;
+  const k = Math.min(1, dt*14);
+  [...svet.hraci, svet.mic].forEach(o => {
+    if(o.cx === undefined) return;
+    o.x += (o.cx - o.x)*k; o.y += (o.cy - o.y)*k;
+  });
+}
+
+/* ============================================================
+   4) SMYČKA – s pevným krokem, ať to jede stejně rychle všude
+   ============================================================ */
+let posledni = performance.now(), zbytek = 0;
+const KROK = 1/60;
+function smycka(ted){
+  let dt = (ted - posledni)/1000; posledni = ted;
+  if(dt > 0.25) dt = 0.25;                 // po přepnutí okna neskákat
+  zbytek += dt;
+  let kroku = 0;
+  while(zbytek >= KROK && kroku < 5){ krok(KROK); zbytek -= KROK; kroku++; }
+  posliSvojeKlavesy();
+  rozesliStav(dt);
+  dojedNaCil(dt);
+  kresli();
+  requestAnimationFrame(smycka);
+}
+requestAnimationFrame(smycka);
+
+function kresli(){
+  c.clearRect(0,0,W,H);
+  c.strokeStyle = "#2c3a58"; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(W/2,0); c.lineTo(W/2,H); c.stroke();
+  svet.hraci.forEach((h,i) => {
+    c.fillStyle = h.b; c.beginPath(); c.arc(h.x,h.y,24,0,7); c.fill();
+    c.fillStyle = "#101828"; c.font = "bold 15px system-ui"; c.textAlign = "center";
+    c.fillText(i === SIT.mojeCislo ? "TY" : "on", h.x, h.y+5);
+  });
+  c.fillStyle = "#fff"; c.beginPath(); c.arc(svet.mic.x, svet.mic.y, 11, 0, 7); c.fill();
+}
+
+/* ============================================================
+   5) TLAČÍTKA
+   ============================================================ */
+const stav = document.getElementById("stav");
+function napis(t){ stav.textContent = t; }
+
+SIT.kdyzSePripoji = kdo => napis("✅ Spojeno! Hráč " + kdo + " je ve hře.");
+SIT.kdyzSeOdpoji  = kdo => napis("⚠️ Hráč " + kdo + " vypadl.");
+
+document.getElementById("btnZaloz").onclick = async () => {
+  napis("Zakládám…");
+  try{
+    const kod = await SIT.zaloz();
+    napis("Kód hry: " + kod + " — nadiktuj ho kamarádovi.");
+  }catch(e){ napis("Nepovedlo se: " + e.message); }
+};
+document.getElementById("btnPripoj").onclick = async () => {
+  const kod = document.getElementById("poleKod").value.trim().toUpperCase();
+  if(kod.length !== 3) return napis("Kód má tři písmenka.");
+  napis("Připojuji se ke hře " + kod + "…");
+  try{ await SIT.pripoj(kod); napis("✅ Spojeno s kamarádem!"); }
+  catch(e){ napis("Nepovedlo se: " + e.message); }
+};
+
+/* ---- automat pro zkoušení (?role=host&kod=ABC / ?role=klient&kod=ABC) ---- */
+(function(){
+  const Q = new URLSearchParams(location.search);
+  const role = Q.get("role");
+  if(!role) return;
+  const kod = (Q.get("kod")||"").toUpperCase();
+  const konec = () => {
+    if(role === "host") SIT.posli({t:"kontrola", m:[svet.mic.x, svet.mic.y]});
+    const t = "role=" + role + " rozdil=" + rozdil
+      + " spojeno=" + (SIT.pocetHracu()>1 || (!SIT.jsemHost && SIT.moje && SIT.moje.stav==="spojeno"))
+      + " prijato=" + prijato + " poslano=" + poslano
+      + " mic=" + Math.round(svet.mic.x) + "," + Math.round(svet.mic.y)
+      + " mojeCislo=" + SIT.mojeCislo;
+    document.title = "UKAZKA " + t;
+    /* Headless Chrome vypisuje stránku hned po načtení, takže výsledek,
+       který vznikne až za 15 vteřin, se do výpisu nikdy nedostane.
+       Proto ho pošleme zkoušecímu serveru sami. */
+    try{ fetch("/vysledek", {method:"POST", body:t}); }catch(e){}
+  };
+  setTimeout(async () => {
+    try{
+      if(role === "host"){
+        SIT._novyKod = () => kod;              // ať víme dopředu, jaký kód to bude
+        await SIT.zaloz();
+      }else{
+        kl["arrowdown"] = true;                // ať kamarád něco posílá
+        await SIT.pripoj(kod);
+      }
+    }catch(e){ document.title = "UKAZKA CHYBA " + e.message; return; }
+    setTimeout(konec, 12000);
+  }, role === "host" ? 300 : 3500);
+  setTimeout(() => { if(!document.title.startsWith("UKAZKA")) konec(); }, 30000);
+})();
+</script>
+</body>
+</html>

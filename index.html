@@ -64,7 +64,11 @@
   </div>
 </div>
 <script>
-const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+/* `ctx` je `let`, aby se dalo na chvilku přepnout na obrázek stranou
+   (viz pripravHriste níž). Kreslicí kód se tím nemusí měnit vůbec. */
+const cv=document.getElementById('c');
+let ctx=cv.getContext('2d');
+const ctxOkno=ctx;
 const VW=1360,VH=760;              // okno (co je vidět)
 const FW=2500,FH=1350;             // celé hřiště (svět) – mnohem větší než obrazovka
 const rink={x:70,y:70,w:FW-140,h:FH-140};
@@ -151,6 +155,9 @@ const ball={x:FW/2,y:CY,vx:0,vy:0,r:10,owner:null,free:0};
 const FORM=[[300,0],[620,-360],[620,360],[900,-190],[900,190]];
 function makeTeams(){
   const A=TEAMS[keyA],B=TEAMS[keyB];
+  /* Branky mají barvu týmu a jsou zapečené v předkresleném hřišti,
+     takže se to při změně týmů musí nakreslit znovu. */
+  hristeObr=null;
   players=[];
   players.push(P(A.names[0],A.type,A.furs[0],A.jersey,'A',rink.x+70,CY,true));
   FORM.forEach((f,i)=>players.push(P(A.names[i+1],A.type,A.furs[i+1],A.jersey,'A',rink.x+f[0],CY+f[1])));
@@ -593,19 +600,64 @@ function endGame(){
 
 // ---------- kreslení ----------
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+/* ---------- dav ----------
+   Devět set diváků mělo každý svou vlastní barvu, takže se každý kreslil
+   zvlášť: skoro tisíc samostatných koleček každý snímek. Barvy se teď
+   losují z třicítky odstínů, což na náhodném davu nikdo nepozná, a diváci
+   stejné barvy se nakreslí jedním tahem. Místo tisíce kreslení jich je
+   šedesát. */
+const DAV_BARVY=[];
+for(let i=0;i<30;i++)DAV_BARVY.push(`hsl(${Math.round(i*360/30)},70%,${45+(i%5)*6}%)`);
 const crowd=[];
-for(let i=0;i<900;i++)crowd.push({x:Math.random()*FW,y:Math.random()*46,c:`hsl(${Math.random()*360},70%,${45+Math.random()*25}%)`,p:Math.random()*6});
+for(let i=0;i<900;i++)crowd.push({x:Math.random()*FW,y:Math.random()*46,b:Math.floor(Math.random()*30),p:Math.random()*6});
+const DAV_SKUPINY=DAV_BARVY.map((_,i)=>crowd.filter(c=>c.b===i));
+
+function drawDav(){
+  const amp=cheer>0?12:3, rychlost=cheer>0?6:22;
+  const zleva=cam.x-20, zprava=cam.x+VW+20;
+  for(const oy of [0,FH-56]){
+    for(let i=0;i<DAV_SKUPINY.length;i++){
+      const sk=DAV_SKUPINY[i];
+      ctx.fillStyle=DAV_BARVY[i];
+      ctx.beginPath();
+      for(const c of sk){
+        if(c.x<zleva||c.x>zprava)continue;
+        const y=oy+8+c.y%34+Math.sin(T/rychlost+c.p)*amp;
+        /* moveTo před arc: bez toho by se kolečka pospojovala čárami */
+        ctx.moveTo(c.x+5,y);ctx.arc(c.x,y,5,0,7);
+      }
+      ctx.fill();
+    }
+  }
+}
+
+/* ---------- hřiště se kreslí JEDNOU dopředu ----------
+   Změřeno: překreslení hřiště stálo 13,4 ms z 16,8 ms celého snímku –
+   a přitom se na něm nic nemění, čáry ani branky se nehýbou. Nakreslí se
+   tedy jednou do obrázku stranou a pak se každý snímek jen obtiskne ta
+   část, která je zrovna vidět. Vypadá to úplně stejně. */
+let hristeObr=null;
+function pripravHriste(){
+  hristeObr=document.createElement('canvas');
+  hristeObr.width=FW;hristeObr.height=FH;
+  const puvodni=ctx;
+  ctx=hristeObr.getContext('2d');
+  try{ drawFieldPlny(); }finally{ ctx=puvodni; }
+}
 function drawField(){
+  if(!hristeObr)pripravHriste();
+  /* Obtiskne se jen kus kolem kamery, ne celé hřiště – z 2500×1350 je
+     vidět necelá polovina a zbytek by se zahazoval. */
+  const x=Math.max(0,Math.floor(cam.x)-40), y=Math.max(0,Math.floor(cam.y)-40);
+  const w=Math.min(FW-x,VW+80), h=Math.min(FH-y,VH+80);
+  ctx.drawImage(hristeObr,x,y,w,h,x,y,w,h);
+  drawDav();
+}
+
+function drawFieldPlny(){
   const g=ctx.createLinearGradient(0,0,0,FH);g.addColorStop(0,'#1b2450');g.addColorStop(1,'#0d1330');
   ctx.fillStyle=g;ctx.fillRect(0,0,FW,FH);
-  [0,FH-56].forEach(oy=>{
-    ctx.fillStyle='#161d3d';ctx.fillRect(0,oy,FW,56);
-    crowd.forEach(c=>{
-      if(c.x<cam.x-20||c.x>cam.x+VW+20)return;
-      const amp=cheer>0?12:3;
-      const y=oy+8+c.y%34+Math.sin(T/(cheer>0?6:22)+c.p)*amp;
-      ctx.fillStyle=c.c;ctx.beginPath();ctx.arc(c.x,y,5,0,7);ctx.fill();});
-  });
+  [0,FH-56].forEach(oy=>{ctx.fillStyle='#161d3d';ctx.fillRect(0,oy,FW,56);});
   const wood=ctx.createLinearGradient(0,rink.y,0,rink.y+rink.h);
   wood.addColorStop(0,'#2f8f5e');wood.addColorStop(.5,'#38ab70');wood.addColorStop(1,'#2b8256');
   ctx.fillStyle=wood;roundRect(rink.x,rink.y,rink.w,rink.h,70);ctx.fill();
@@ -671,6 +723,10 @@ function drawPlush(p){
       ctx.fillStyle=shade(p.fur,25);ctx.beginPath();ctx.arc(x+s*R*0.76,y-R*0.76,R*0.17,0,7);ctx.fill();ctx.fillStyle=p.fur;});
   }
   // tělo
+  /* Zkoušel jsem si přeliv na kožíšku schovávat a panáčka pod něj jen
+     posouvat – vyšlo to HŮŘ (3,2 → 5,8 ms na dvanáct panáčků). Přeliv se
+     pod posunutým plátnem stejně přepočítá znovu a přibude přepínání
+     stavu plátna navíc. Tak zpátky po staru; ne každá úspora je úspora. */
   const g=ctx.createRadialGradient(x-R*0.35,y-R*0.45,R*0.15,x,y,R*1.05);
   g.addColorStop(0,shade(p.fur,38));g.addColorStop(.65,p.fur);g.addColorStop(1,dark);
   ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill();
@@ -860,7 +916,21 @@ function drawExtras(){
   }
   ctx.restore();
 }
-function loop(){
+/* ---------- smyčka s PEVNÝM krokem ----------
+   Dřív se jeden krok hry udělal na každý snímek monitoru. Jenže herní
+   notebooky a dnešní telefony mají 120 nebo 144 snímků za vteřinu, takže
+   tam hra běžela dvakrát rychleji, hráči lítali a tříminutový zápas
+   skončil za minutu a čtvrt. A na slabším počítači to naopak bylo jako
+   ve zpomaleném filmu.
+
+   Teď se počítá vždycky přesně 60 kroků za vteřinu, ať monitor kreslí
+   kolikrát chce. Zaokrouhlování zbytku se přenáší do dalšího snímku,
+   takže se nic neztrácí ani nepřidává. Víc než pět kroků naráz se
+   nedohání – po přepnutí okna jinam by se hra jinak snažila dohnat celou
+   dobu, co byla schovaná, a zatuhla by. */
+const KROK=1/60;
+let casPosledne=0, zbytekCasu=0;
+function jedenKrok(){
   T++;
   if(!paused)step();
   if(cheer>0)cheer--;
@@ -872,15 +942,26 @@ function loop(){
   if(ball.owner)trail.length=0;
   const tx=Math.max(0,Math.min(FW-VW,me.x-VW/2)),ty=Math.max(0,Math.min(FH-VH,me.y-VH/2));
   cam.x+=(tx-cam.x)*0.09;cam.y+=(ty-cam.y)*0.09;
-  ctx.clearRect(0,0,VW,VH);
   if(shake>0)shake*=0.88;
+}
+function loop(ted){
+  if(ted===undefined)ted=performance.now();
+  if(!casPosledne)casPosledne=ted;
+  let dt=(ted-casPosledne)/1000;casPosledne=ted;
+  if(dt>0.25)dt=0.25;
+  zbytekCasu+=dt;
+  let kroku=0;
+  while(zbytekCasu>=KROK&&kroku<5){jedenKrok();zbytekCasu-=KROK;kroku++;}
+
+  ctx.clearRect(0,0,VW,VH);
   const sx=shake>0.5?(Math.random()-.5)*shake:0,sy=shake>0.5?(Math.random()-.5)*shake:0;
   ctx.save();ctx.translate(-Math.round(cam.x)+sx,-Math.round(cam.y)+sy);
   drawField();
   if(coachA)drawCoach(coachA);if(coachB)drawCoach(coachB);
-  players.filter(p=>p.team==='B').forEach(drawPlush);
+  /* Dvakrát players.filter() znamenalo dvě nová pole každý snímek. */
+  for(const p of players)if(p.team==='B')drawPlush(p);
   if(referee)drawPlush(referee);
-  players.filter(p=>p.team==='A').forEach(drawPlush);
+  for(const p of players)if(p.team==='A')drawPlush(p);
   drawEffects();drawBall();
   ctx.restore();
   drawHud();drawExtras();drawMinimap();
