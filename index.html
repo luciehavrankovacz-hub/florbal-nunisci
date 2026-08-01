@@ -57,6 +57,13 @@
         <button class="dbtn" data-d="2">🐺 Těžký</button>
       </div>
     </div>
+    <div class="row"><span class="lab">Vzor dresu:</span>
+      <div class="row" id="jstyle">
+        <button class="dbtn" data-j="normal">👕 Normální</button>
+        <button class="dbtn" data-j="pruhy">〰️ Pruhovaný</button>
+        <button class="dbtn" data-j="duha">🌈 Duhový</button>
+      </div>
+    </div>
     <div class="row">
       <button class="big" id="play">HRÁT ZÁPAS</button>
       <button class="big big2" id="playPen">🎯 NÁJEZDY</button>
@@ -87,6 +94,7 @@ let record=+(localStorage.getItem('florbalRekord')||0);
 let stats={shots:0,saves:0,goals:{}};
 let parts=[],trail=[];
 
+let jerseyStyle=localStorage.getItem('florbalDres')||'normal';
 // ---------- zvuky (bez souborů, generované) ----------
 let AC=null;
 let ticho=(localStorage.getItem('florbalTicho')==='1');
@@ -750,10 +758,22 @@ function drawPlush(p){
     ctx.fillStyle='#222';
     for(let i=-3;i<4;i++)ctx.fillRect(x+i*R*0.32,y+R*0.25,R*0.16,R);
   }else{
-    ctx.fillStyle=p.jersey;ctx.fillRect(x-R,y+R*0.28,R*2,R);
-    ctx.fillStyle='#ffffffcc';ctx.fillRect(x-R,y+R*0.28,R*2,R*0.13);
-    ctx.fillStyle='#fff';ctx.font='bold '+Math.round(R*0.5)+'px Verdana';
-    ctx.fillText(p.num,x,y+R*0.92);
+    const jy=y+R*0.28,jh=R;
+    if(jerseyStyle==='pruhy'){
+      ctx.fillStyle=p.jersey;ctx.fillRect(x-R,jy,R*2,jh);
+      ctx.fillStyle='#ffffff';
+      for(let i=-3;i<4;i+=2)ctx.fillRect(x+i*R*0.3,jy,R*0.22,jh);
+    }else if(jerseyStyle==='duha'){
+      const rg=ctx.createLinearGradient(x-R,jy,x+R,jy);
+      ['#ff5c5c','#ffb347','#ffe066','#6fdc6f','#5cb8ff','#a77bfa'].forEach((c,i,a)=>rg.addColorStop(i/(a.length-1),c));
+      ctx.fillStyle=rg;ctx.fillRect(x-R,jy,R*2,jh);
+    }else{
+      ctx.fillStyle=p.jersey;ctx.fillRect(x-R,jy,R*2,jh);
+    }
+    ctx.fillStyle='#ffffffcc';ctx.fillRect(x-R,jy,R*2,R*0.13);
+    ctx.font='bold '+Math.round(R*0.5)+'px Verdana';
+    if(jerseyStyle==='duha'){ctx.strokeStyle='#241a12';ctx.lineWidth=Math.max(1,R*0.08);ctx.strokeText(p.num,x,y+R*0.92);}
+    ctx.fillStyle='#fff';ctx.fillText(p.num,x,y+R*0.92);
   }
   ctx.restore();
   // obličej
@@ -983,6 +1003,14 @@ function loop(ted){
 document.querySelectorAll('#diff .dbtn').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#diff .dbtn').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');diff=+b.dataset.d;});
+document.querySelectorAll('#jstyle .dbtn').forEach(b=>{
+  if(b.dataset.j===jerseyStyle)b.classList.add('on');
+  b.onclick=()=>{
+    document.querySelectorAll('#jstyle .dbtn').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');jerseyStyle=b.dataset.j;
+    try{localStorage.setItem('florbalDres',jerseyStyle);}catch(e){}
+  };
+});
 function buildSel(id){
   const box=document.getElementById(id);box.innerHTML='';
   Object.keys(TEAMS).forEach(k=>{
