@@ -123,20 +123,32 @@ function confetti(x,y,n){
 
 // ---------- týmy ----------
 const TEAMS={
-  cica:{label:'KOČIČKY',emoji:'🐱',type:'cica',jersey:'#ff5c9e',
-    furs:['#ffd9a0','#ffb45e','#c9a8f0','#ffe6c9','#f0b8d0','#e8c49a'],
-    names:['Micka','Mandarin','Mystic','Kiki','Líza','Tygřík']},
-  pejsek:{label:'PEJSCI',emoji:'🐶',type:'pejsek',jersey:'#2f7ddb',
-    furs:['#d9b48a','#b98356','#fff0d4','#8d6743','#c9a276','#f0dcc0'],
-    names:['Dunčo','Rex','Clawsby','Bafík','Punťa','Alík']},
-  medvidek:{label:'MEDVÍDCI',emoji:'🧸',type:'medvidek',jersey:'#3fbf6a',
-    furs:['#e0b98a','#c99a6a','#f6d9a8','#a97b4f','#d8ac7e','#eecfa6'],
-    names:['Pufík','Bruno','Méďa','Chlupáč','Bobík','Huňáč']},
-  zajic:{label:'ZAJÍČCI',emoji:'🐰',type:'zajic',jersey:'#ffb02e',
-    furs:['#fff8e0','#ffffff','#f0e6ff','#ded6f5','#fdf0d0','#efe8ff'],
-    names:['Ušík','Zajda','Skokan','Chichi','Bělka','Hopík']}
+  pandici:{label:'PANDÍCI',emoji:'🐼',type:'panda',jersey:'#3fa9f5',
+    furs:['#f7f7f7','#eef2f5','#fbeee0','#e9eef2','#f2ece2','#eef5f7'],
+    names:['Bublinka','Yun','Mišule','Pandolf','Sněhulka','Bambusek']},
+  bobrici:{label:'BOBŘÍCI',emoji:'🦫',type:'bobr',jersey:'#2fae7a',
+    furs:['#c97b3d','#d9955a','#e0b07a','#b9723a','#cf8a4d','#e3a86a'],
+    names:['Hráz','Dřevák','Ořech','Klacík','Splávek','Bobrouš']},
+  cici:{label:'ČÍČI',emoji:'🐱',type:'cica',jersey:'#ff8a3d',
+    furs:['#2b2b2b','#3a3a3a','#242424','#333029','#2f2a26','#363636'],
+    names:['Sazka','Půlnoc','Uhlík','Stín','Saze','Noční']},
+  vlcci:{label:'VLČCI',emoji:'🐺',type:'vlk',jersey:'#e8433f',
+    furs:['#6fb3e0','#8fc7ea','#5a9fd4','#7ec0e8','#4f8fc4','#9ccfee'],
+    names:['Fenrík','Mráz','Ledovka','Vichr','Polárka','Šedivka']},
+  clawsby:{label:'CLAWSBY',emoji:'🐾',type:'clawsby',jersey:'#8a63d2',
+    furs:['#e0a83f','#eab766','#d99a2e','#f0c47a','#c98f2a','#e8b959'],
+    names:['Slunko','Hřívák','Zlatáň','Lvíček','Paprsek','Ohnivák']},
+  veverky:{label:'VEVERKY',emoji:'🐿️',type:'veverka',jersey:'#3fbf6a',
+    furs:['#e8823d','#f0a35e','#d9702c','#eb9650','#c96a28','#f2b06e'],
+    names:['Oříšek','Skokan','Pruhovka','Žaludka','Chvostík','Ratolest']},
+  taborci:{label:'TÁBORCI',emoji:'🏕️',type:'tabor',jersey:'#2fc4c4',
+    furs:['#f5e6ee','#fbe0ea','#f0d2e0','#f7ece9','#f2d9e6','#fbe8ee'],
+    names:['Táborák','Jiskra','Plamínek','Kotlík','Stan','Popelka']},
+  pejsci:{label:'PEJSCI',emoji:'🐶',type:'pejsek',jersey:'#2f7ddb',
+    furs:['#d9955a','#c97b3d','#e0b07a','#b9723a','#cf8a4d','#a35f2a'],
+    names:['Dunčo','Rex','Brok','Bafík','Punťa','Alík']}
 };
-let keyA='cica',keyB='pejsek';
+let keyA='cici',keyB='pejsci';
 
 function P(name,type,fur,jersey,team,x,y,goalie,ref){
   return {name,type,fur,jersey,team,x,y,hx:x,hy:y,vx:0,vy:0,r:goalie?28:21,num:1,
@@ -705,7 +717,7 @@ function drawPlush(p){
   }
   // uši
   ctx.fillStyle=p.fur;ctx.strokeStyle=line;ctx.lineWidth=Math.max(1.6,R*0.09);
-  if(p.type==='cica'){
+  if(p.type==='cica'||p.type==='vlk'){
     [-1,1].forEach(s=>{ctx.beginPath();ctx.moveTo(x+s*R*0.62,y-R*0.72);ctx.lineTo(x+s*R*1.02,y-R*1.6);
       ctx.lineTo(x+s*R*0.14,y-R*1.06);ctx.closePath();ctx.fill();ctx.stroke();
       ctx.fillStyle=pink;ctx.beginPath();ctx.moveTo(x+s*R*0.6,y-R*0.85);ctx.lineTo(x+s*R*0.86,y-R*1.35);
