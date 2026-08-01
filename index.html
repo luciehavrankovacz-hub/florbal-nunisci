@@ -47,7 +47,8 @@
        Sám od sebe se hráč změní jen tehdy, když tvůj tým získá míček (má nad sebou žlutou šipku <b>TY</b>).<br>
        Pohyb: <b>šipky</b> nebo <b>W A S D</b> (nebo drž myš). Píská <b>rozhodčí Pandík</b> 🐼 –
        když někdo ošklivě vypíchne míček, odpíská <b>faul a nájezd</b>. Když nájezd kope soupeř, chytáš za brankáře!
-       Na okraji hřiště fandí <b>trenéři</b> obou týmů – při gólu skáčou nejvíc! 📣</p>
+       Na okraji hřiště fandí <b>trenéři</b> obou týmů – při gólu skáčou nejvíc! 📣<br>
+       Kapitán týmu má na dresu <b>číslo 7</b> a žlutý odznak <b>C</b>.</p>
     <div class="row"><span class="lab">Hraješ za:</span><div class="row" id="selA"></div></div>
     <div class="row"><span class="lab">Soupeř:</span><div class="row" id="selB"></div></div>
     <div class="row"><span class="lab">Síla bota:</span>
@@ -804,9 +805,16 @@ function drawPlush(p){
   ctx.fillStyle=pink;ctx.globalAlpha=.5;
   [-1,1].forEach(s=>{ctx.beginPath();ctx.ellipse(x+s*R*0.68+ex,y+R*0.14,R*0.17,R*0.12,0,0,7);ctx.fill();});
   ctx.globalAlpha=1;
+  // odznak kapitána (číslo 7)
+  if(p.num===7){
+    ctx.fillStyle='#ffd84d';ctx.beginPath();ctx.arc(x+R*0.72,y+R*0.18,R*0.3,0,7);ctx.fill();
+    ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#241a12';ctx.font='bold '+Math.round(R*0.34)+'px Verdana';
+    ctx.fillText('C',x+R*0.72,y+R*0.18+R*0.12);
+  }
   // jméno
   ctx.fillStyle='#fff';ctx.font='bold 13px Verdana';ctx.strokeStyle='#000a';ctx.lineWidth=4;
-  const nm=p.ref?'🐼 rozhodčí':p.name;
+  const nm=p.ref?'🐼 rozhodčí':(p.num===7?'(C) '+p.name:p.name);
   ctx.strokeText(nm,x,y+R+20);ctx.fillText(nm,x,y+R+20);
   if(p===me&&running){
     ctx.strokeStyle='#ffd84d';ctx.lineWidth=5;ctx.beginPath();ctx.arc(p.x,p.y,R+9,0,7);ctx.stroke();
