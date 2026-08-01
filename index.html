@@ -131,31 +131,36 @@ function confetti(x,y,n){
 
 // ---------- týmy ----------
 const TEAMS={
-  pandici:{label:'PANDÍCI',emoji:'🐼',type:'panda',jersey:'#3fa9f5',
+  pandici:{label:'PANDÍCI',emoji:'🐼',type:'panda',jersey:'#3fa9f5',captain:'Pandík',
     furs:['#f7f7f7','#eef2f5','#fbeee0','#e9eef2','#f2ece2','#eef5f7'],
     names:['Pandík JR','Pandík','Mišule','Pandolf','Sněhulka','Bambusek']},
-  bobrici:{label:'BOBŘÍCI',emoji:'🦫',type:'bobr',jersey:'#2fae7a',
+  bobrici:{label:'BOBŘÍCI',emoji:'🦫',type:'bobr',jersey:'#2fae7a',captain:'Bobřík',
     furs:['#c97b3d','#d9955a','#e0b07a','#b9723a','#cf8a4d','#e3a86a'],
     names:['Bobřík','Bobřík F','Bobřík L','Bobřík D','Splávek','Bobrouš']},
-  cici:{label:'ČÍČI',emoji:'🐱',type:'cica',jersey:'#ff8a3d',
+  cici:{label:'ČÍČI',emoji:'🐱',type:'cica',jersey:'#ff8a3d',captain:'Mystic',
     furs:['#2b2b2b','#3a3a3a','#242424','#333029','#2f2a26','#363636'],
     names:['Číča','Mystic','Číča F','Číča D','Číča L','Číča']},
-  vlcci:{label:'VLČCI',emoji:'🐺',type:'vlk',jersey:'#e8433f',
+  vlcci:{label:'VLČCI',emoji:'🐺',type:'vlk',jersey:'#e8433f',captain:'Vlček',
     furs:['#6fb3e0','#8fc7ea','#5a9fd4','#7ec0e8','#4f8fc4','#9ccfee'],
     names:['Vlček D','Vlček','Vlček L','Vlček S','Polárka','Šedivka']},
-  clawsby:{label:'CLAWSBY',emoji:'🐾',type:'clawsby',jersey:'#8a63d2',
+  clawsby:{label:'CLAWSBY',emoji:'🐾',type:'clawsby',jersey:'#8a63d2',captain:'Clawsby',
     furs:['#e0a83f','#eab766','#d99a2e','#f0c47a','#c98f2a','#e8b959'],
     names:['Clawsby','Tygřík','Tygřík F','Lvíček','Paprsek','Ohnivák']},
-  veverky:{label:'VEVERKY',emoji:'🐿️',type:'veverka',jersey:'#3fbf6a',
+  veverky:{label:'VEVERKY',emoji:'🐿️',type:'veverka',jersey:'#3fbf6a',captain:'Veverka',
     furs:['#e8823d','#f0a35e','#d9702c','#eb9650','#c96a28','#f2b06e'],
     names:['Veverka','Veverka Bez','Pruhovka','Žaludka','Chvostík','Ratolest']},
-  mysky:{label:'MYŠKY',emoji:'🐭',type:'mysky',jersey:'#2fc4c4',
+  mysky:{label:'MYŠKY',emoji:'🐭',type:'mysky',jersey:'#2fc4c4',captain:'Myška Víc',
     furs:['#f5e6ee','#fbe0ea','#f0d2e0','#f7ece9','#f2d9e6','#fbe8ee'],
     names:['Myška L','Myška Víc','Myška Míň','Pinďa','Růženka','Ocásek']},
-  pejsci:{label:'PEJSCI',emoji:'🐶',type:'pejsek',jersey:'#2f7ddb',
+  pejsci:{label:'PEJSCI',emoji:'🐶',type:'pejsek',jersey:'#2f7ddb',captain:'Mandarin',
     furs:['#d9955a','#c97b3d','#e0b07a','#b9723a','#cf8a4d','#a35f2a'],
     names:['Dunčo','Rex','Mandarin','Bafík','Punťa','Tanner']}
 };
+function assignNums(list,teamObj){
+  const capIdx=teamObj.names.indexOf(teamObj.captain);
+  const pool=[1,4,5,9,10];let pi=0;
+  list.forEach((p,i)=>{p.num=(i===capIdx)?7:pool[pi++];});
+}
 let keyA='cici',keyB='pejsci';
 
 function P(name,type,fur,jersey,team,x,y,goalie,ref){
@@ -183,8 +188,8 @@ function makeTeams(){
   FORM.forEach((f,i)=>players.push(P(A.names[i+1],A.type,A.furs[i+1],A.jersey,'A',rink.x+f[0],CY+f[1])));
   players.push(P(B.names[0],B.type,B.furs[0],B.jersey,'B',rink.x+rink.w-70,CY,true));
   FORM.forEach((f,i)=>players.push(P(B.names[i+1],B.type,B.furs[i+1],B.jersey,'B',rink.x+rink.w-f[0],CY-f[1])));
-  const nums=[1,4,5,7,9,10];
-  players.forEach((p,i)=>{p.num=nums[i%6];p.hx=p.x;p.hy=p.y;});
+  assignNums(players.slice(0,6),A);assignNums(players.slice(6,12),B);
+  players.forEach(p=>{p.hx=p.x;p.hy=p.y;});
   referee=P('Pandík','panda','#ffffff','#222222','R',FW/2,CY-260,false,true);
   coachA=makeCoach(keyA,'A');coachB=makeCoach(keyB,'B');
   me=players[3];
