@@ -63,8 +63,10 @@
         <button class="dbtn" data-j="normal">👕 Normální</button>
         <button class="dbtn" data-j="pruhy">〰️ Pruhovaný</button>
         <button class="dbtn" data-j="duha">🌈 Duhový</button>
+        <button class="dbtn" data-j="zlaty" id="bZlatyDres">🏆 Zlatý</button>
       </div>
     </div>
+    <p id="serieInfo" style="font-size:15px;color:#ffd84d;margin:0"></p>
     <div class="row">
       <button class="big" id="play">HRÁT ZÁPAS</button>
       <button class="big big2" id="playPen">🎯 NÁJEZDY</button>
@@ -87,11 +89,13 @@ const cam={x:0,y:0};
 let diff=1,running=false,over=false,mode='match';
 let msg="",msgT=0,timeLeft=180,scoreA=0,scoreB=0,T=0,pauseT=0,pauseFn=null;
 let pen=null; // stav nájezdů
-let paused=false,charging=false,charge=0,stamina=100,cheer=0,lastShooter=null,shake=0,celebrate=null;
+let paused=false,charging=false,charge=0,stamina=100,cheer=0,lastShooter=null,shake=0,celebrate=null,celebrateTeam=0;
 const SHOT_MSGS=['%s to zkouší! 🏑','%s pálí! 💥','Rána od %s! 🚀','%s jede na branku! 🔥','%s se řítí na bránu! 🌪️'];
 function shotMsg(name){return SHOT_MSGS[Math.floor(Math.random()*SHOT_MSGS.length)].replace('%s',name);}
 let dohravka=0;   // po vyprseni casu se dohraje rozehrana akce
 let record=+(localStorage.getItem('florbalRekord')||0);
+let serie=+(localStorage.getItem('florbalSerie')||0);
+let zlataOdemcena=(localStorage.getItem('florbalZlata')==='1');
 let stats={shots:0,saves:0,goals:{}};
 let parts=[],trail=[];
 
@@ -615,6 +619,13 @@ function startPens(afterDraw){
 }
 function endGame(){
   running=false;over=true;
+  if(scoreA>scoreB&&celebrateTeam<=0){
+    confetti(me.x,me.y-100,120);SFX.goal();celebrateTeam=130;shake=10;
+    pauseT=130;pauseFn=dokoncetEndGame;return;
+  }
+  dokoncetEndGame();
+}
+function dokoncetEndGame(){
   const m=document.getElementById('menu');m.style.display='flex';
   m.querySelector('h1').textContent=scoreA>scoreB?'🏆 VYHRÁLI JSTE! '+scoreA+':'+scoreB
     :scoreA<scoreB?'😿 Prohra '+scoreA+':'+scoreB:'🤝 Remíza '+scoreA+':'+scoreB;
@@ -622,10 +633,18 @@ function endGame(){
   let rec='';
   if(scoreA>record){record=scoreA;localStorage.setItem('florbalRekord',record);rec='   🥇 NOVÝ REKORD!';}
   else rec='   🥇 Tvůj rekord: '+record+' gólů';
+  let serieTxt='';
+  if(scoreA>scoreB){
+    serie++;
+    if(serie>=3&&!zlataOdemcena){zlataOdemcena=true;try{localStorage.setItem('florbalZlata','1');}catch(e){}
+      serieTxt='   🏆 ODEMČEN ZLATÝ DRES!';}
+    else serieTxt='   🔥 Série výher: '+serie;
+  } else serie=0;
+  try{localStorage.setItem('florbalSerie',serie);}catch(e){}
+  if(typeof obnovZlatyDres==='function')obnovZlatyDres();
   document.getElementById('stats').textContent=
     '🏑 Tvoje střely: '+stats.shots+'   🧤 Zákroky tvého brankáře: '+stats.saves+
-    (g?'   ⭐ Nejlepší střelec: '+g[0]+' ('+g[1]+')':'')+rec;
-  if(scoreA>scoreB){confetti(me.x,me.y-100,120);SFX.goal();}
+    (g?'   ⭐ Nejlepší střelec: '+g[0]+' ('+g[1]+')':'')+rec+serieTxt;
   document.getElementById('play').textContent='HRÁT ZNOVU';
 }
 
@@ -718,8 +737,8 @@ function drawGoal(x,col,dir){
   ctx.restore();
 }
 function drawPlush(p){
-  const slavi=celebrate&&celebrate.p===p&&celebrate.t>0;
-  const bob=slavi?Math.abs(Math.sin(T*0.35))*(p.r*0.9):Math.sin(p.anim)*2.5,x=p.x,y=p.y+bob,R=p.r;
+  const slavi=(celebrate&&celebrate.p===p&&celebrate.t>0)||(celebrateTeam>0&&p.team==='A'&&!p.ref);
+  const bob=slavi?Math.abs(Math.sin(T*0.35+p.anim))*(p.r*0.9):Math.sin(p.anim)*2.5,x=p.x,y=p.y+bob,R=p.r;
   const dark=shade(p.fur,-45),line=shade(p.fur,-95),pink='#ff9dbb';
   ctx.save();ctx.textAlign='center';ctx.lineJoin='round';
   ctx.fillStyle='#00000038';ctx.beginPath();ctx.ellipse(p.x,p.y+R,R*0.85,R*0.3,0,0,7);ctx.fill();
@@ -783,12 +802,17 @@ function drawPlush(p){
       const rg=ctx.createLinearGradient(x-R,jy,x+R,jy);
       ['#ff5c5c','#ffb347','#ffe066','#6fdc6f','#5cb8ff','#a77bfa'].forEach((c,i,a)=>rg.addColorStop(i/(a.length-1),c));
       ctx.fillStyle=rg;ctx.fillRect(x-R,jy,R*2,jh);
+    }else if(jerseyStyle==='zlaty'){
+      const zg=ctx.createLinearGradient(x-R,jy,x+R,jy);
+      const posun=(Math.sin(T*0.04+x*0.02)+1)/2;
+      zg.addColorStop(Math.max(0,posun-0.25),'#8a6a1e');zg.addColorStop(posun,'#ffe98a');zg.addColorStop(Math.min(1,posun+0.25),'#8a6a1e');
+      ctx.fillStyle=zg;ctx.fillRect(x-R,jy,R*2,jh);
     }else{
       ctx.fillStyle=p.jersey;ctx.fillRect(x-R,jy,R*2,jh);
     }
     ctx.fillStyle='#ffffffcc';ctx.fillRect(x-R,jy,R*2,R*0.13);
     ctx.font='bold '+Math.round(R*0.5)+'px Verdana';
-    if(jerseyStyle==='duha'){ctx.strokeStyle='#241a12';ctx.lineWidth=Math.max(1,R*0.08);ctx.strokeText(p.num,x,y+R*0.92);}
+    if(jerseyStyle==='duha'||jerseyStyle==='zlaty'){ctx.strokeStyle='#241a12';ctx.lineWidth=Math.max(1,R*0.08);ctx.strokeText(p.num,x,y+R*0.92);}
     ctx.fillStyle='#fff';ctx.fillText(p.num,x,y+R*0.92);
   }
   ctx.restore();
@@ -990,6 +1014,7 @@ function jedenKrok(){
   if(!paused)step();
   if(cheer>0)cheer--;
   if(celebrate){celebrate.t--;if(celebrate.t<=0)celebrate=null;}
+  if(celebrateTeam>0)celebrateTeam--;
   parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.35;p.vx*=0.99;p.rot+=0.15;p.life--;});
   parts=parts.filter(p=>p.life>0);
   if(!ball.owner&&Math.hypot(ball.vx,ball.vy)>5)trail.push({x:ball.x,y:ball.y});
@@ -1026,14 +1051,24 @@ function loop(ted){
 document.querySelectorAll('#diff .dbtn').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#diff .dbtn').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');diff=+b.dataset.d;});
+function obnovZlatyDres(){
+  if(zlataOdemcena){bZlatyDres.disabled=false;bZlatyDres.textContent='🏆 Zlatý';bZlatyDres.style.opacity=1;}
+  else{bZlatyDres.disabled=true;bZlatyDres.textContent='🔒 Zlatý (3 výhry v řadě)';bZlatyDres.style.opacity=.55;
+    if(jerseyStyle==='zlaty'){jerseyStyle='normal';try{localStorage.setItem('florbalDres','normal');}catch(e){}}}
+  document.getElementById('serieInfo').textContent = zlataOdemcena
+    ? '🏆 Zlatý dres odemčen! Aktuální série výher: '+serie
+    : (serie>0 ? 'Série výher: '+serie+'/3 do zlatého dresu' : '');
+}
 document.querySelectorAll('#jstyle .dbtn').forEach(b=>{
   if(b.dataset.j===jerseyStyle)b.classList.add('on');
   b.onclick=()=>{
+    if(b.disabled)return;
     document.querySelectorAll('#jstyle .dbtn').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');jerseyStyle=b.dataset.j;
     try{localStorage.setItem('florbalDres',jerseyStyle);}catch(e){}
   };
 });
+obnovZlatyDres();
 function buildSel(id){
   const box=document.getElementById(id);box.innerHTML='';
   Object.keys(TEAMS).forEach(k=>{
