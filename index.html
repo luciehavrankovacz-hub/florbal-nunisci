@@ -48,7 +48,9 @@
        Pohyb: <b>šipky</b> nebo <b>W A S D</b> (nebo drž myš). Píská <b>rozhodčí Pandík</b> 🐼 –
        když někdo ošklivě vypíchne míček, odpíská <b>faul a nájezd</b>. Když nájezd kope soupeř, chytáš za brankáře!
        Na okraji hřiště fandí <b>trenéři</b> obou týmů – při gólu skáčou nejvíc! 📣<br>
-       Kapitán týmu má na dresu <b>číslo 7</b> a žlutý odznak <b>C</b>.</p>
+       Kapitán týmu má na dresu <b>číslo 7</b> a žlutý odznak <b>C</b>.<br>
+       <b>Hraní s kamarádem:</b> jeden založí hru a řekne kamarádovi tříznakový kód, druhý ho opíše a klikne na Připojit se.
+       Ty pak hraješ za tým vlevo, kamarád ovládá jednoho hráče v soupeřově týmu <b>jen šipkami/WASD a klávesami</b> (tlačítka myší mu zatím nefungují).</p>
     <div class="row"><span class="lab">Hraješ za:</span><div class="row" id="selA"></div></div>
     <div class="row"><span class="lab">Soupeř:</span><div class="row" id="selB"></div></div>
     <div class="row"><span class="lab">Síla bota:</span>
@@ -71,9 +73,20 @@
       <button class="big" id="play">HRÁT ZÁPAS</button>
       <button class="big big2" id="playPen">🎯 NÁJEZDY</button>
     </div>
+    <div class="row" style="border-top:2px solid #ffffff22;padding-top:14px;margin-top:4px">
+      <span class="lab">S kamarádem:</span>
+      <button class="dbtn" id="btnZaloz">👥 Založit hru</button>
+      <input id="poleKod" maxlength="3" placeholder="KÓD"
+        style="width:70px;text-align:center;text-transform:uppercase;font-size:19px;padding:9px;
+        border-radius:12px;border:4px solid #ffffff33;background:#26314f;color:#fff">
+      <button class="dbtn" id="btnPripoj">🔗 Připojit se</button>
+    </div>
+    <p id="mpStav" style="font-size:15px;color:#8ef0a0;margin:0;min-height:18px"></p>
   </div>
 </div>
+<script src="multiplayer/sit.js"></script>
 <script>
+SIT.jmeno="flo";SIT.verze="f1";
 /* `ctx` je `let`, aby se dalo na chvilku přepnout na obrázek stranou
    (viz pripravHriste níž). Kreslicí kód se tím nemusí měnit vůbec. */
 const cv=document.getElementById('c');
@@ -100,6 +113,18 @@ let stats={shots:0,saves:0,goals:{}};
 let parts=[],trail=[];
 
 let jerseyStyle=localStorage.getItem('florbalDres')||'normal';
+
+// ---------- hraní s kamarádem přes internet ----------
+/* Kamarád ovládá VŽDY jednoho konkrétního hráče týmu B (players[7] –
+   první hráč v poli, ne brankář), stejně jako v NAVOD.md. Hostitel
+   počítá úplně všechno (i kamarádova hráče) – kamarád jen posílá,
+   které klávesy drží, a promítá si obrázek stavu, co mu pošle
+   hostitel. Nikdy nepočítá svět sám, jinak by se míček každému
+   rozjel jinam (viz sit.js). */
+let kamarad=null, ciziKlavesy="000000000";
+let kamaradCharging=false, kamaradCharge=0, kamaradStamina=100;
+function bitJe(s,i){return !!s&&s[i]==='1';}
+function jaJsemTym(t){return (SIT.zapnuto&&!SIT.jsemHost)?t==='B':t==='A';}
 // ---------- zvuky (bez souborů, generované) ----------
 let AC=null;
 let ticho=(localStorage.getItem('florbalTicho')==='1');
@@ -211,6 +236,10 @@ function shade(hex,amt){
 }
 function resetPositions(dir){
   makeTeams();
+  /* makeTeams() staví celé pole players ZNOVA (nové objekty) – kamarádův
+     hráč po každém gólu proto musí ukázat na tu novou verzi, jinak by
+     hostitel ovládal kamarádem už zahozenou, neviditelnou postavičku. */
+  if(SIT.zapnuto&&SIT.jsemHost)kamarad=players[7];
   ball.x=FW/2;ball.y=CY;ball.vx=(Math.random()-.5)*2*dir;ball.vy=(Math.random()-.5)*2;
   ball.owner=null;ball.free=30;
   cam.x=Math.max(0,Math.min(FW-VW,me.x-VW/2));
@@ -284,7 +313,7 @@ addEventListener('keydown',e=>{
   keys[k]=true;
   if(k==='v')poke();if(k==='n')pass();if(k==='b')stopIt();if(k==='z')switchPlayer();
   if(k==='m')prepniZvuk();
-  if(k==='p'||k==='escape'){paused=!paused;say(paused?'PAUZA ⏸ (P = zpět)':'Hraje se! ▶');}
+  if((k==='p'||k==='escape')&&!SIT.zapnuto){paused=!paused;say(paused?'PAUZA ⏸ (P = zpět)':'Hraje se! ▶');}
 });
 addEventListener('keyup',e=>{
   const k=e.key.toLowerCase();keys[k]=false;
@@ -300,14 +329,19 @@ bShoot.onclick=()=>shoot(0.55);bPoke.onclick=poke;bPass.onclick=pass;bStop.oncli
 bMute.onclick=prepniZvuk;
 bSwitch.onclick=()=>switchPlayer();
 
-function shoot(power){
-  if(!running||paused||ball.owner!==me)return;
+function shoot(power,who){
+  /* Klient sám nic nepočítá – jen pošle hostiteli, které klávesy drží.
+     Tahle funkce smí opravdu vystřelit jen tam, kde se počítá svět. */
+  if(SIT.zapnuto&&!SIT.jsemHost)return;
+  who=who||me;
+  if(!running||paused||ball.owner!==who)return;
   const p=Math.max(0.25,Math.min(1,power||0.25));
+  const attackR=who.team==='A',cilBranyX=attackR?GL_R:GL_L;
   // miř do rohu, kde soupeřův brankář zrovna není
-  const gk=players.find(q=>q.goalie&&q.team==='B');
+  const gk=players.find(q=>q.goalie&&q.team!==who.team);
   const side=gk?(gk.y>CY?-1:1):(Math.random()<.5?-1:1);
   const gy=CY+side*GOALH*(0.55+0.3*p)+(Math.random()-.5)*GOALH*(1.1-p*0.8);
-  let dx=GL_R-me.x,dy=gy-me.y,d=Math.hypot(dx,dy)||1;
+  let dx=cilBranyX-who.x,dy=gy-who.y,d=Math.hypot(dx,dy)||1;
   let odpal=false;
   if(d>820){
     /* Z takové dálky se na bránu netrefíš – míček letí směrem, kterým se
@@ -316,51 +350,61 @@ function shoot(power){
        obránce koukal ke svojí brance, nabitá střela skončila ve VLASTNÍ
        síti. Odpal proto vždycky míří aspoň trochu dopředu. */
     odpal=true;
-    dx=me.dx;dy=me.dy;
-    if(dx<0.25){dx=0.6;dy=(me.y<CY?-1:1)*0.5;}   // nikdy ne zpátky na vlastní bránu
+    dx=who.dx;dy=who.dy;
+    if(attackR?dx<0.25:dx>-0.25){dx=attackR?0.6:-0.6;dy=(who.y<CY?-1:1)*0.5;}   // nikdy ne zpátky na vlastní bránu
     d=Math.hypot(dx,dy)||1;
   }
   const v=13+p*15;
-  ball.owner=null;ball.free=11;ball.vx=dx/d*v;ball.vy=dy/d*v;me.cool=18;
-  lastShooter=me.name;
+  ball.owner=null;ball.free=11;ball.vx=dx/d*v;ball.vy=dy/d*v;who.cool=18;
+  lastShooter=who.name;
   /* Odpal z dálky NENÍ střela na bránu – dřív se počítal do statistiky
      a kazil ji (452 „střel" s jednoprocentní úspěšností na pět zápasů). */
   if(odpal){ SFX.pass(); say('Moc daleko na bránu – jen odpal dopředu! 🏑'); }
-  else { stats.shots++; SFX.shot(p);
-    say(p>0.8?me.name+' pálí ze všech sil! 💥':shotMsg(me.name)); }
+  else { if(who.team==='A')stats.shots++; SFX.shot(p);
+    say(p>0.8?who.name+' pálí ze všech sil! 💥':shotMsg(who.name)); }
 }
-function pass(){
-  if(!running||paused||ball.owner!==me)return;
+function pass(who){
+  if(SIT.zapnuto&&!SIT.jsemHost)return;
+  who=who||me;
+  if(!running||paused||ball.owner!==who)return;
+  const attackR=who.team==='A';
   // nahraj tomu, kdo je volný a nejdál vepředu (ne prostě nejbližšímu)
   let best=null,bs=-1e9;
   players.forEach(p=>{
-    if(p.team!=='A'||p===me||p.goalie)return;
-    const d=Math.hypot(p.x-me.x,p.y-me.y);
+    if(p.team!==who.team||p===who||p.goalie)return;
+    const d=Math.hypot(p.x-who.x,p.y-who.y);
     if(d>900)return;
     let free=999;
-    players.forEach(o=>{if(o.team==='B')free=Math.min(free,Math.hypot(o.x-p.x,o.y-p.y));});
-    const sc=p.x*0.5+free*1.2-d*0.35;
+    players.forEach(o=>{if(o.team!==who.team)free=Math.min(free,Math.hypot(o.x-p.x,o.y-p.y));});
+    const sc=(attackR?p.x:-p.x)*0.5+free*1.2-d*0.35;
     if(sc>bs){bs=sc;best=p;}
   });
   if(!best)return;
-  const dx=best.x-me.x,dy=best.y-me.y,d=Math.hypot(dx,dy)||1;
-  ball.owner=null;ball.free=10;ball.vx=dx/d*13;ball.vy=dy/d*13;me.cool=12;
+  const dx=best.x-who.x,dy=best.y-who.y,d=Math.hypot(dx,dy)||1;
+  ball.owner=null;ball.free=10;ball.vx=dx/d*13;ball.vy=dy/d*13;who.cool=12;
   SFX.pass();say('Nahrávka pro '+best.name+'! 🎯');
 }
-function poke(){
-  if(!running||paused||me.cool>0)return;me.cool=10;
-  if(ball.owner&&ball.owner.team!=='A'&&Math.hypot(ball.owner.x-me.x,ball.owner.y-me.y)<90){
+function poke(who){
+  if(SIT.zapnuto&&!SIT.jsemHost)return;
+  who=who||me;
+  if(!running||paused||who.cool>0)return;who.cool=10;
+  if(ball.owner&&ball.owner.team!==who.team&&Math.hypot(ball.owner.x-who.x,ball.owner.y-who.y)<90){
     ball.owner=null;ball.free=20;
-    ball.vx=(ball.x-me.x)*0.1+(Math.random()-.5)*4;ball.vy=(ball.y-me.y)*0.1+(Math.random()-.5)*4;
+    ball.vx=(ball.x-who.x)*0.1+(Math.random()-.5)*4;ball.vy=(ball.y-who.y)*0.1+(Math.random()-.5)*4;
     SFX.steal();say('Vypíchnuto! 💪');
-    if(mode==='match'&&Math.random()<0.05){foul('B');return;}  // viz stealCheck – nájezdů bylo moc
-  }else if(!ball.owner&&Math.hypot(ball.x-me.x,ball.y-me.y)<105){ball.owner=me;ball.free=0;SFX.pass();say('Máš míček! ⚪');}
+    if(mode==='match'&&Math.random()<0.05){foul(who.team==='A'?'B':'A');return;}  // viz stealCheck – nájezdů bylo moc
+  }else if(!ball.owner&&Math.hypot(ball.x-who.x,ball.y-who.y)<105){ball.owner=who;ball.free=0;SFX.pass();say('Máš míček! ⚪');}
 }
-function stopIt(){
-  if(!running||paused)return;me.vx*=0.15;me.vy*=0.15;
-  if(Math.hypot(ball.x-me.x,ball.y-me.y)<90){ball.vx*=0.15;ball.vy*=0.15;say('STOP! 🛑');}
+function stopIt(who){
+  if(SIT.zapnuto&&!SIT.jsemHost)return;
+  who=who||me;
+  if(!running||paused)return;who.vx*=0.15;who.vy*=0.15;
+  if(Math.hypot(ball.x-who.x,ball.y-who.y)<90){ball.vx*=0.15;ball.vy*=0.15;say('STOP! 🛑');}
 }
-function say(t){msg=t;msgT=90;}
+function say(t){
+  msg=t;msgT=90;
+  if(SIT.zapnuto&&SIT.jsemHost)SIT.rychle({t:'msg',m:t});   // kamarád ať vidí stejné hlášky
+}
 
 // ---------- logika ----------
 function clampRink(p){
@@ -399,6 +443,7 @@ function pickMe(){
   }
 }
 function switchPlayer(){
+  if(SIT.zapnuto)return;   // v multiplayeru máš vždycky jen jednoho svého hráče
   if(!running||paused||mode!=='match')return;   // v pauze je zamčené všechno ostatní, ať i tohle
   const n=nearestOf('A');
   if(!n||n===me)return;
@@ -434,7 +479,7 @@ function stealCheck(){
   if(!o||o.team==='R'||o.cool>0)return;
   const D=[0.5,1,1.5][diff];
   for(const t of players){
-    if(t===o||t.team===o.team||t.team==='R'||t===me||t.cool>0)continue;
+    if(t===o||t.team===o.team||t.team==='R'||t===me||t===kamarad||t.cool>0)continue;
     if(t.goalie){                              // brankář krade jen blízko své brány
       const gx=t.team==='A'?rink.x+65:rink.x+rink.w-65;
       if(Math.abs(o.x-gx)>240)continue;
@@ -479,7 +524,7 @@ function step(){
       const klid = ball.owner || Math.hypot(ball.vx,ball.vy)<2.5;
       if(klid||dohravka>3){
         dohravka=0;
-        if(scoreA===scoreB){startPens(true);return;} endGame();return;
+        if(scoreA===scoreB&&!SIT.zapnuto){startPens(true);return;} endGame();return;
       }
     }
   }else{
@@ -488,6 +533,7 @@ function step(){
   }
   if(mode==='match')pickMe();
   if(charging){if(ball.owner===me)charge=Math.min(1,charge+1/42);else{charging=false;charge=0;}}
+  if(kamaradCharging){if(ball.owner===kamarad)kamaradCharge=Math.min(1,kamaradCharge+1/42);else{kamaradCharging=false;kamaradCharge=0;}}
 
   let ax=0,ay=0;
   if(keys['arrowleft']||keys['a'])ax-=1;
@@ -497,22 +543,34 @@ function step(){
   if(mouse){const dx=mouse.x-me.x,dy=mouse.y-me.y,d=Math.hypot(dx,dy);if(d>16){ax+=dx/d;ay+=dy/d;}}
   const n=Math.hypot(ax,ay);
   if(n>0){me.vx+=ax/n*0.7;me.vy+=ay/n*0.7;}
+  if(SIT.zapnuto&&SIT.jsemHost&&kamarad){
+    let kax=0,kay=0;
+    if(bitJe(ciziKlavesy,0))kax-=1;if(bitJe(ciziKlavesy,1))kax+=1;
+    if(bitJe(ciziKlavesy,2))kay-=1;if(bitJe(ciziKlavesy,3))kay+=1;
+    const kn=Math.hypot(kax,kay);
+    if(kn>0){kamarad.vx+=kax/kn*0.7;kamarad.vy+=kay/kn*0.7;}
+  }
 
   players.forEach(p=>{
     p.cool=Math.max(0,p.cool-1);
     p.saveCd=Math.max(0,(p.saveCd||0)-1);
     p.stumble=Math.max(0,(p.stumble||0)-1);
     if(p.stumble>0){p.vx*=0.8;p.vy*=0.8;}
-    else if(p!==me){
-      const t=aiTarget(p),dx=t.x-p.x,dy=t.y-p.y,d=Math.hypot(dx,dy)||1;
-      const acc=p.goalie?2.2:0.55;   // brankář reaguje bleskově
-      if(d>8){p.vx+=dx/d*acc;p.vy+=dy/d*acc;}
-      const s=Math.hypot(p.vx,p.vy);if(s>t.sp){p.vx*=t.sp/s;p.vy*=t.sp/s;}
-    }else{
+    else if(p===me){
       const sprint=!!keys['shift']&&stamina>1&&!p.goalie;
       const max=(p.goalie?8.5:4.0)*(sprint?1.45:1),s=Math.hypot(p.vx,p.vy);
       if(s>max){p.vx*=max/s;p.vy*=max/s;}
       stamina=Math.max(0,Math.min(100,stamina+(sprint&&s>1.5?-0.9:0.35)));
+    }else if(SIT.zapnuto&&SIT.jsemHost&&p===kamarad){
+      const sprint=bitJe(ciziKlavesy,8)&&kamaradStamina>1;
+      const max=4.0*(sprint?1.45:1),s=Math.hypot(p.vx,p.vy);
+      if(s>max){p.vx*=max/s;p.vy*=max/s;}
+      kamaradStamina=Math.max(0,Math.min(100,kamaradStamina+(sprint&&s>1.5?-0.9:0.35)));
+    }else{
+      const t=aiTarget(p),dx=t.x-p.x,dy=t.y-p.y,d=Math.hypot(dx,dy)||1;
+      const acc=p.goalie?2.2:0.55;   // brankář reaguje bleskově
+      if(d>8){p.vx+=dx/d*acc;p.vy+=dy/d*acc;}
+      const s=Math.hypot(p.vx,p.vy);if(s>t.sp){p.vx*=t.sp/s;p.vy*=t.sp/s;}
     }
     p.vx*=0.9;p.vy*=0.9;p.x+=p.vx;p.y+=p.vy;
     const s=Math.hypot(p.vx,p.vy);
@@ -549,7 +607,7 @@ function step(){
   if(ball.owner){
     const o=ball.owner;
     ball.x=o.x+o.dx*(o.r+13);ball.y=o.y+o.dy*(o.r+13);ball.vx=o.vx;ball.vy=o.vy;
-    if(o!==me&&!o.goalie)botAction(o);
+    if(o!==me&&o!==kamarad&&!o.goalie)botAction(o);
     if(o.goalie){
       if(mode==='shootout'){penEnd(pen.turn==='A'?'Brankář to chytil! 🧤':'Tvůj brankář chytá! 🧤🎉');return;}
       if(Math.random()<0.05){const d=o.team==='A'?1:-1;ball.owner=null;ball.free=16;ball.vx=11*d;ball.vy=(Math.random()-.5)*6;}
@@ -606,6 +664,7 @@ function step(){
 }
 function goal(team){
   if(team==='A')scoreA++;else scoreB++;
+  if(SIT.zapnuto&&SIT.jsemHost)SIT.posli({t:'gol',team,x:Math.round(ball.x),y:Math.round(ball.y)});
   SFX.whistle();setTimeout(()=>SFX.goal(),260);
   cheer=150;confetti(ball.x,ball.y,team==='A'?90:35);shake=team==='A'?16:8;
   let hattrick=false;
@@ -949,13 +1008,13 @@ function drawHud(){
   ctx.fillStyle='#0b1029dd';roundRect(VW/2-330,6,660,54,16);ctx.fill();
   ctx.strokeStyle='#ffd84d';ctx.lineWidth=3;roundRect(VW/2-330,6,660,54,16);ctx.stroke();
   ctx.font='bold 27px Verdana';
-  ctx.fillStyle=TEAMS[keyA].jersey;ctx.fillText(TEAMS[keyA].emoji+' '+TEAMS[keyA].label+' (ty) '+scoreA,VW/2-175,44);
+  ctx.fillStyle=TEAMS[keyA].jersey;ctx.fillText(TEAMS[keyA].emoji+' '+TEAMS[keyA].label+(jaJsemTym('A')?' (ty)':'')+' '+scoreA,VW/2-175,44);
   ctx.fillStyle='#fff';ctx.font='bold 30px Verdana';
   if(mode==='match'){const mm=Math.floor(timeLeft/60),ss=Math.floor(timeLeft%60);
     ctx.fillText(mm+':'+(ss<10?'0':'')+ss,VW/2,44);}
   else ctx.fillText(Math.ceil(pen.timer)+'s',VW/2,44);
   ctx.font='bold 27px Verdana';
-  ctx.fillStyle=TEAMS[keyB].jersey;ctx.fillText(scoreB+' '+TEAMS[keyB].label+' '+TEAMS[keyB].emoji,VW/2+175,44);
+  ctx.fillStyle=TEAMS[keyB].jersey;ctx.fillText(scoreB+' '+TEAMS[keyB].label+(jaJsemTym('B')?' (ty)':'')+' '+TEAMS[keyB].emoji,VW/2+175,44);
   if(mode==='shootout'){
     ctx.font='bold 22px Verdana';ctx.fillStyle='#ffd84d';
     ctx.fillText('🎯 NÁJEZD '+pen.round+' – '+(pen.turn==='A'?'střílíš TY':'střílí soupeř'),VW/2,88);
@@ -1029,19 +1088,126 @@ const KROK=1/60;
 let casPosledne=0, zbytekCasu=0;
 function jedenKrok(){
   T++;
-  if(!paused)step();
-  if(cheer>0)cheer--;
-  if(celebrate){celebrate.t--;if(celebrate.t<=0)celebrate=null;}
-  if(celebrateTeam>0)celebrateTeam--;
+  /* Kamarád (klient) svět nepočítá vůbec – jen dojíždí k obrázku stavu,
+     co mu pošle hostitel (viz SIT.kdyzPrijde níž). Bez tohohle by si
+     počítal svoje vlastní, mírně jinak zaokrouhlené kopie a míček by
+     mu za pár vteřin byl jinde než hostiteli. */
+  const jsemKlient=SIT.zapnuto&&!SIT.jsemHost;
+  if(!paused&&!jsemKlient)step();
+  if(!jsemKlient){
+    if(cheer>0)cheer--;
+    if(celebrate){celebrate.t--;if(celebrate.t<=0)celebrate=null;}
+    if(celebrateTeam>0)celebrateTeam--;
+    if(shake>0)shake*=0.88;
+  }
   parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.35;p.vx*=0.99;p.rot+=0.15;p.life--;});
   parts=parts.filter(p=>p.life>0);
   if(!ball.owner&&Math.hypot(ball.vx,ball.vy)>5)trail.push({x:ball.x,y:ball.y});
   while(trail.length>10)trail.shift();
   if(ball.owner)trail.length=0;
+  if(jsemKlient){
+    // plynulé dojetí k poslední přijaté poloze, ne skok (viz NAVOD.md)
+    const k=0.25;
+    for(const p of players){if(p.cx===undefined)continue;p.x+=(p.cx-p.x)*k;p.y+=(p.cy-p.y)*k;p.anim+=0.2;}
+    if(ball.cx!==undefined){ball.x+=(ball.cx-ball.x)*k;ball.y+=(ball.cy-ball.y)*k;}
+    if(referee&&referee.cx!==undefined){referee.x+=(referee.cx-referee.x)*k;referee.y+=(referee.cy-referee.y)*k;}
+  }
   const tx=Math.max(0,Math.min(FW-VW,me.x-VW/2)),ty=Math.max(0,Math.min(FH-VH,me.y-VH/2));
   cam.x+=(tx-cam.x)*0.09;cam.y+=(ty-cam.y)*0.09;
-  if(shake>0)shake*=0.88;
 }
+// ---------- síť: co posílat a co dělat s tím, co přijde ----------
+let poslKlavesy="";
+function posliKlavesy(){
+  if(!SIT.zapnuto||SIT.jsemHost)return;
+  const s=[keys['arrowleft']||keys['a'],keys['arrowright']||keys['d'],
+           keys['arrowup']||keys['w'],keys['arrowdown']||keys['s'],
+           !!keys[' '],!!keys['v'],!!keys['n'],!!keys['b'],!!keys['shift']]
+          .map(x=>x?1:0).join('');
+  if(s===poslKlavesy)return;
+  // zapamatovat AŽ PO odeslání – dokud se kanál otvírá, rychle() vrátí false
+  // a zpráva zmizí; kdybychom si to odškrtli dřív, kamarád by se pak nehnul
+  if(SIT.rychle({t:'k',s}))poslKlavesy=s;
+}
+let odesilaniCas=0;
+function rozesliStav(dt){
+  if(!SIT.zapnuto||!SIT.jsemHost)return;
+  odesilaniCas+=dt;
+  if(odesilaniCas<1/20)return;
+  odesilaniCas=0;
+  SIT.rychle({t:'stav',
+    p:players.map(p=>[Math.round(p.x),Math.round(p.y),Math.round(p.dx*100),Math.round(p.dy*100),p.num,p.stumble>0?1:0]),
+    b:[Math.round(ball.x),Math.round(ball.y),ball.owner?players.indexOf(ball.owner):-1],
+    sk:[scoreA,scoreB],cas:Math.round(timeLeft),
+    r:referee?[Math.round(referee.x),Math.round(referee.y)]:null,
+    ch:cheer,sh:Math.round(shake*10)/10,
+    cl:celebrate?[players.indexOf(celebrate.p),celebrate.t]:null,
+    clt:celebrateTeam});
+}
+SIT.kdyzPrijde=(z,od)=>{
+  if(SIT.jsemHost){
+    /* zatím jeden kamarád (od===1); víc jich sit.js umí, ale to je až
+       na potom (viz NAVOD.md „co nechat na potom") */
+    if(z.t==='k'&&od===1&&kamarad){
+      const bylo=ciziKlavesy;ciziKlavesy=z.s;
+      if(bitJe(z.s,4)&&!bitJe(bylo,4)){kamaradCharging=true;kamaradCharge=0;}
+      if(!bitJe(z.s,4)&&bitJe(bylo,4)){kamaradCharging=false;shoot(kamaradCharge,kamarad);kamaradCharge=0;}
+      if(bitJe(z.s,5)&&!bitJe(bylo,5))poke(kamarad);
+      if(bitJe(z.s,6)&&!bitJe(bylo,6))pass(kamarad);
+      if(bitJe(z.s,7)&&!bitJe(bylo,7))stopIt(kamarad);
+    }
+    return;
+  }
+  // kamarád (klient):
+  if(z.t==='nastaveni'){
+    keyA=z.keyA;keyB=z.keyB;diff=z.diff;
+    startCommon();mode='match';timeLeft=180;makeTeams();
+    kamarad=players[7];me=kamarad;
+    cam.x=Math.max(0,Math.min(FW-VW,me.x-VW/2));cam.y=Math.max(0,Math.min(FH-VH,me.y-VH/2));
+    running=true;
+    document.getElementById('mpStav').textContent='Hra začíná!';
+    say('Hra začíná! Hraješ za '+me.name+'! 🏑');
+    return;
+  }
+  if(z.t==='stav'){
+    z.p.forEach((q,i)=>{const p=players[i];if(!p)return;
+      p.cx=q[0];p.cy=q[1];p.dx=q[2]/100;p.dy=q[3]/100;p.num=q[4];p.stumble=q[5]?1:0;});
+    ball.cx=z.b[0];ball.cy=z.b[1];ball.owner=z.b[2]>=0?players[z.b[2]]:null;
+    scoreA=z.sk[0];scoreB=z.sk[1];timeLeft=z.cas;
+    if(referee&&z.r){referee.cx=z.r[0];referee.cy=z.r[1];}
+    cheer=z.ch;shake=z.sh;
+    celebrate=z.cl?{p:players[z.cl[0]],t:z.cl[1]}:null;
+    celebrateTeam=z.clt;
+    return;
+  }
+  if(z.t==='msg'){msg=z.m;msgT=90;return;}
+  if(z.t==='gol'){SFX.whistle();setTimeout(()=>SFX.goal(),260);confetti(z.x,z.y,z.team==='A'?35:90);return;}
+};
+SIT.kdyzSeOdpoji=kdo=>{
+  if(SIT.jsemHost){kamarad=null;say('Kamarád vypadl 😿 – hraje teď za něj bot.');}
+  else document.getElementById('mpStav').textContent='⚠️ Spojení s hostitelem spadlo.';
+};
+document.getElementById('btnZaloz').onclick=async()=>{
+  const stavEl=document.getElementById('mpStav');
+  stavEl.textContent='Zakládám hru…';
+  try{
+    const kod=await SIT.zaloz();
+    stavEl.textContent='📋 Kód pro kamaráda: '+kod+' — až se připojí, hra začne sama.';
+    SIT.kdyzSePripoji=()=>{
+      SIT.posli({t:'nastaveni',keyA,keyB,diff});
+      startCommon();mode='match';timeLeft=180;resetPositions(1);
+      running=true;say('Kamarád se připojil! Začínáme! 🏑');
+    };
+  }catch(e){stavEl.textContent='Nepovedlo se: '+e.message;}
+};
+document.getElementById('btnPripoj').onclick=async()=>{
+  const stavEl=document.getElementById('mpStav');
+  const kod=(document.getElementById('poleKod').value||'').trim().toUpperCase();
+  if(kod.length!==3){stavEl.textContent='Kód má tři písmenka.';return;}
+  stavEl.textContent='Připojuji se…';
+  try{ await SIT.pripoj(kod); stavEl.textContent='✅ Spojeno! Čekám, až hostitel spustí zápas…'; }
+  catch(e){stavEl.textContent='Nepovedlo se: '+e.message;}
+};
+
 function loop(ted){
   if(ted===undefined)ted=performance.now();
   if(!casPosledne)casPosledne=ted;
@@ -1050,6 +1216,7 @@ function loop(ted){
   zbytekCasu+=dt;
   let kroku=0;
   while(zbytekCasu>=KROK&&kroku<5){jedenKrok();zbytekCasu-=KROK;kroku++;}
+  posliKlavesy();rozesliStav(dt);
 
   ctx.clearRect(0,0,VW,VH);
   const sx=shake>0.5?(Math.random()-.5)*shake:0,sy=shake>0.5?(Math.random()-.5)*shake:0;
@@ -1111,6 +1278,7 @@ function startCommon(){
 document.getElementById('play').onclick=()=>{
   startCommon();mode='match';timeLeft=180;resetPositions(1);running=true;say('Začínáme! 🏑');};
 document.getElementById('playPen').onclick=()=>{
+  if(SIT.zapnuto){document.getElementById('mpStav').textContent='Nájezdy s kamarádem zatím neumíme – zahraj normální zápas.';return;}
   startCommon();makeTeams();startPens(false);say('Nájezdy! 5 pokusů pro každého 🎯');};
 makeTeams();resetPositions(1);loop();
 </script>
