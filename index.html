@@ -501,7 +501,9 @@ function step(){
   players.forEach(p=>{
     p.cool=Math.max(0,p.cool-1);
     p.saveCd=Math.max(0,(p.saveCd||0)-1);
-    if(p!==me){
+    p.stumble=Math.max(0,(p.stumble||0)-1);
+    if(p.stumble>0){p.vx*=0.8;p.vy*=0.8;}
+    else if(p!==me){
       const t=aiTarget(p),dx=t.x-p.x,dy=t.y-p.y,d=Math.hypot(dx,dy)||1;
       const acc=p.goalie?2.2:0.55;   // brankář reaguje bleskově
       if(d>8){p.vx+=dx/d*acc;p.vy+=dy/d*acc;}
@@ -533,7 +535,13 @@ function step(){
   }
   for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){
     const a=players[i],b=players[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,m=a.r+b.r;
-    if(d<m){const f=(m-d)/2/d;a.x-=dx*f;a.y-=dy*f;b.x+=dx*f;b.y+=dy*f;}
+    if(d<m){
+      const f=(m-d)/2/d;a.x-=dx*f;a.y-=dy*f;b.x+=dx*f;b.y+=dy*f;
+      const rychlost=Math.hypot(a.vx-b.vx,a.vy-b.vy);
+      if(rychlost>4.5&&!(a.stumble>0)&&!(b.stumble>0)){
+        a.stumble=22;b.stumble=22;say(['BUM! 💥','Hups! 😵','Au! 🌀'][Math.floor(Math.random()*3)]);SFX.steal();
+      }
+    }
   }
 
   if(ball.free>0)ball.free--;
@@ -741,6 +749,9 @@ function drawPlush(p){
   const bob=slavi?Math.abs(Math.sin(T*0.35+p.anim))*(p.r*0.9):Math.sin(p.anim)*2.5,x=p.x,y=p.y+bob,R=p.r;
   const dark=shade(p.fur,-45),line=shade(p.fur,-95),pink='#ff9dbb';
   ctx.save();ctx.textAlign='center';ctx.lineJoin='round';
+  if(p.stumble>0){
+    ctx.translate(x,y);ctx.rotate(Math.sin(p.stumble*0.9)*0.45*(p.stumble/22));ctx.translate(-x,-y);
+  }
   ctx.fillStyle='#00000038';ctx.beginPath();ctx.ellipse(p.x,p.y+R,R*0.85,R*0.3,0,0,7);ctx.fill();
   if(!p.ref){ctx.strokeStyle=p.jersey;ctx.lineWidth=4;ctx.globalAlpha=.95;
     ctx.beginPath();ctx.ellipse(p.x,p.y+R*0.95,R,R*0.4,0,0,7);ctx.stroke();ctx.globalAlpha=1;}
@@ -845,6 +856,13 @@ function drawPlush(p){
   ctx.fillStyle='#fff';ctx.font='bold 13px Verdana';ctx.strokeStyle='#000a';ctx.lineWidth=4;
   const nm=p.ref?'🐼 rozhodčí':(p.num===7?'(C) '+p.name:p.name);
   ctx.strokeText(nm,x,y+R+20);ctx.fillText(nm,x,y+R+20);
+  if(p.stumble>0){
+    ctx.font='16px Verdana';
+    for(let i=0;i<3;i++){
+      const a=T*0.2+i*2.1,sx=x+Math.cos(a)*(R*0.9),sy=y-R*1.3+Math.sin(a)*6;
+      ctx.fillText('💫',sx,sy);
+    }
+  }
   if(p===me&&running){
     ctx.strokeStyle='#ffd84d';ctx.lineWidth=5;ctx.beginPath();ctx.arc(p.x,p.y,R+9,0,7);ctx.stroke();
     const ty=y-R-46+Math.sin(T*0.13)*5;
