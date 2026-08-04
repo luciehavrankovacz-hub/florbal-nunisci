@@ -510,8 +510,11 @@ function botAction(p){
   if(ball.owner!==p)return;
   if(dist<560&&Math.random()<0.045*D+0.015){
     const gy=CY+(Math.random()-.5)*(190-50*D),dx=goalX-p.x,dy=gy-p.y,d=Math.hypot(dx,dy)||1;
-    ball.owner=null;ball.free=11;ball.vx=dx/d*18;ball.vy=dy/d*18;p.cool=16;
-    lastShooter=p.name;SFX.shot(0.6);
+    const sila=Math.random()<0.3;                 // boti si taky občas prásknou pořádnou ránu jako ty
+    const v=sila?26:18;
+    ball.owner=null;ball.free=11;ball.vx=dx/d*v;ball.vy=dy/d*v;p.cool=16;
+    lastShooter=p.name;SFX.shot(sila?1:0.6);
+    if(sila)say(p.name+' pálí ze všech sil! 💥');
   }else if(Math.random()<0.012&&mode==='match'){
     let m=null,bd=1e9;
     players.forEach(t=>{if(t.team===p.team&&t!==p&&!t.goalie){const d=Math.hypot(t.x-p.x,t.y-p.y);if(d<bd){bd=d;m=t;}}});
@@ -646,7 +649,7 @@ function step(){
           p.saveCd=14;
           if(p.team==='A')stats.saves++;
           SFX.save();
-          if(ball.free===0&&Math.random()<0.35){        // chytil (0.55 bylo moc – góly padají hlavně z dorážek)
+          if(ball.free===0&&Math.random()<0.45){        // brankáři (tví i botovi) chytají spolehlivěji
             ball.owner=p;say('Brankář chytá! 🧤');
           }else{                                       // vyrazil
             /* Vyrazit se musí OD SVÉ BRANKY do pole, ne „kamkoli od brankáře" –
