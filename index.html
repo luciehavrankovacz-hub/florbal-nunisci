@@ -86,6 +86,18 @@
 </div>
 <script src="multiplayer/sit.js"></script>
 <script>
+/* Kdyby se sit.js z nějakého důvodu nenačetl (chybí složka multiplayer/
+   vedle hry, žádný internet…), ať to nesloží ÚPLNĚ CELOU hru – tohle byl
+   skutečný pád: SIT.jmeno=... byl úplně první řádek skriptu, takže když
+   SIT neexistovalo, spadlo hned na startu a nic nešlo hrát ani proti
+   botovi. Falešná krabička SIT to podrží: síť prostě jen nepůjde. */
+if(typeof SIT==='undefined'){
+  window.SIT={zapnuto:false,jsemHost:false,mojeCislo:0,
+    posli(){return false;},rychle(){return false;},pocetHracu(){return 1;},
+    zaloz(){return Promise.reject(new Error('Síťový modul se nenačetl (chybí složka multiplayer/ vedle hry).'));},
+    pripoj(){return Promise.reject(new Error('Síťový modul se nenačetl (chybí složka multiplayer/ vedle hry).'));},
+    kdyzPrijde(){},kdyzSePripoji(){},kdyzSeOdpoji(){},kdyzChyba(){}};
+}
 SIT.jmeno="flo";SIT.verze="f1";
 /* `ctx` je `let`, aby se dalo na chvilku přepnout na obrázek stranou
    (viz pripravHriste níž). Kreslicí kód se tím nemusí měnit vůbec. */
