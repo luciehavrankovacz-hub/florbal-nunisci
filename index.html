@@ -606,11 +606,10 @@ function step(){
   for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){
     const a=players[i],b=players[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,m=a.r+b.r;
     if(d<m){
+      /* Zavrávorání po srážce se spouštělo skoro při každé přihrávce nebo
+         vypíchnutí míčku (hráči se u míčku běžně sráží rychleji než 4.5),
+         takže to vypadalo, že se hra kazí. Vypnuto – jen odstrčení zůstává. */
       const f=(m-d)/2/d;a.x-=dx*f;a.y-=dy*f;b.x+=dx*f;b.y+=dy*f;
-      const rychlost=Math.hypot(a.vx-b.vx,a.vy-b.vy);
-      if(rychlost>4.5&&!(a.stumble>0)&&!(b.stumble>0)){
-        a.stumble=22;b.stumble=22;say(['BUM! 💥','Hups! 😵','Au! 🌀'][Math.floor(Math.random()*3)]);SFX.steal();
-      }
     }
   }
 
